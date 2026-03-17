@@ -150,14 +150,14 @@ Two patch meshes are used for performance optimization. If you want trees to fad
 
 ## Performance
 
-| Preset | Terrain tris | Crown verts | Tested on |
-|---|---|---|---|
-| ultralow | ~1.5k | 42v × N | old mobile / weak integrated |
-| low | ~4k | 42v × N | integrated GPU |
-| medium | ~9.6k | 42v × N | mid laptop |
-| high | ~26k | 42v × N | iPhone 11 |
-| ultra | ~60k | 642v × N | Windows laptop |
-| extreme | ~90k | 642v × N | Mac (large headroom) |
+| Preset   | Landscape Polygons | Crown Vertices | Tested On             |
+| -------- | ------------------ | -------------- | --------------------- |
+| ultralow | ~1.5k              | 42v × N        | low-end mobile        |
+| low      | ~4k                | 42v × N        | integrated GPU        |
+| medium   | ~9.6k              | 42v × N        | entry-level Android   |
+| high     | ~26k               | 42v × N        | iPhone 11             |
+| ultra    | ~60k               | 642v × N       | mid-range laptop      |
+| extreme  | ~90k               | 642v × N       | Mac M4, discrete GPUs |
 
 Draw calls per frame: **5–6** (sky + 3 terrain chunks + 2 tree patches).
 
