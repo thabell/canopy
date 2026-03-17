@@ -1,0 +1,870 @@
+<div class="landscape">
+<style>
+.landscape__bg,.landscape__bg *{margin:0;padding:0;box-sizing:border-box}
+.landscape{position:relative;width:100%;height:100vh;overflow:hidden;background:#010205}
+.landscape__bg{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0}
+.landscape__bg canvas{display:block;width:100%!important;height:100%!important}
+.landscape__content{position:relative;z-index:10;background: rgba(0, 0, 0, 0.3);height:100%;}
+.landscape__content *:not(a):not(button):not(.btn):not(a *):not(button *):not(.btn *){background:none!important}
+.landscape__ctrl{position:absolute;bottom:20px;right:20px;z-index:100;background:rgba(0,0,0,0.58);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 18px;color:#fff;font:12px/1.6 'Courier New',monospace;min-width:260px;user-select:none}
+.landscape__ctrl>summary{cursor:pointer;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:.06em;list-style:none;display:flex;align-items:center;gap:6px}
+.landscape__ctrl>summary::-webkit-details-marker{display:none}
+.landscape__ctrl>summary::before{content:'⚙';font-size:13px}
+.landscape__ctrl[open]>summary{margin-bottom:12px}
+.landscape__ctrl-body{display:flex;flex-direction:column;gap:9px}
+.landscape__ctrl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.landscape__ctrl-label{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;flex:1}
+.landscape__ctrl-val{font-size:11px;color:#d6ec41;min-width:60px;text-align:right;white-space:nowrap}
+.landscape__ctrl-sep{border:none;border-top:1px solid rgba(255,255,255,0.07);margin:1px 0}
+.landscape__ctrl-probe{font-size:10px;color:rgba(255,165,0,0.85);min-height:14px}
+.landscape__toggle{position:relative;width:36px;height:20px;flex-shrink:0}
+.landscape__toggle input{opacity:0;width:0;height:0;position:absolute}
+.landscape__toggle .lnd-track{position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:20px;cursor:pointer;transition:background .2s}
+.landscape__toggle input:checked+.lnd-track{background:#d6ec41}
+.landscape__toggle .lnd-track::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.landscape__toggle input:checked+.lnd-track::before{transform:translateX(16px)}
+.landscape__range{-webkit-appearance:none;width:100px;height:3px;background:rgba(255,255,255,0.20);border-radius:2px;cursor:pointer;outline:none;flex-shrink:0}
+.landscape__range::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;background:#d6ec41;border-radius:50%;transition:transform .1s}
+.landscape__range::-webkit-slider-thumb:hover{transform:scale(1.3)}
+.landscape__range::-moz-range-thumb{width:13px;height:13px;border:none;background:#d6ec41;border-radius:50%}
+.landscape__ctrl-sub{border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 10px}
+.landscape__ctrl-sub>summary{cursor:pointer;font-size:10px;color:rgba(255,255,255,0.40);letter-spacing:.05em;list-style:none;display:flex;align-items:center;gap:5px}
+.landscape__ctrl-sub>summary::-webkit-details-marker{display:none}
+.landscape__ctrl-sub>summary::before{content:'▸';display:inline-block;transition:transform .15s}
+.landscape__ctrl-sub[open]>summary::before{transform:rotate(90deg)}
+.landscape__ctrl-sub[open]>summary{margin-bottom:8px}
+.landscape__ctrl-sub-body{display:flex;flex-direction:column;gap:6px}
+.landscape__color-input{width:32px;height:20px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none;flex-shrink:0}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<div class="landscape__bg"></div>
+<div class="landscape__content">
+
+</div>
+
+<script>
+// ╔═══════════════════════════════════════════════════════════════════╗
+// ║  КОНФИГ                                                          ║
+// ╚═══════════════════════════════════════════════════════════════════╝
+const C = {
+  DEBUG: false,
+
+  // ─── Геометрия чанков ─────────────────────────────────────────────
+  CHUNK_W:860, CHUNK_D:400, CHUNKS:7,
+
+  // ─── Шум (параметры из Blender) ───────────────────────────────────
+  MTN_F:0.0062, MTN_A:48,  MTN_O:8, MTN_R:0.81, MTN_L:2.0, MTN_T:0.07,
+  HILL_F:0.013, HILL_A:14, HILL_O:6, HILL_R:0.55, HILL_L:2.05,
+  BASE_F:0.019, BASE_A:7,  BASE_O:5, BASE_R:0.57, BASE_L:2.06,
+
+  // ─── Озёра ────────────────────────────────────────────────────────
+  LAKE_F:0.006, LAKE_T:-0.10, LAKE_S:0.12, LAKE_D:-6.0,
+
+  // ─── Биомы / вода ─────────────────────────────────────────────────
+  TERRAIN_LIFT: 1.0,
+  WATER_LEVEL:  0.0,
+
+  // ─── Цвета ландшафта (линейный RGB) ──────────────────────────────
+  C_DEEPW:[0.010,0.028,0.060], C_WATER:[0.016,0.048,0.090],
+  C_SHORE:[0.035,0.065,0.045], C_GR1:  [0.090,0.220,0.082],
+  C_GR2:  [0.095,0.255,0.178], C_RK1:  [0.140,0.152,0.105],
+  C_RK2:  [0.210,0.210,0.150], C_MTN:  [0.260,0.260,0.260],
+  C_PEAK: [0.355,0.380,0.415], C_SNOW: [0.710,0.775,0.840],
+
+  // ─── Туман ────────────────────────────────────────────────────────
+  // [FIX 3] Нормальный дальний туман: smoothstep(FOG_N, FOG_F, dist)
+  //   FOG_N — дистанция начала тумана (до неё туман = 0)
+  //   FOG_F — дистанция полного тумана
+  //   Было: FOG_N:55, FOG_F:5 → перевёрнутый smoothstep, туман у камеры
+  //   Стало: туман начинается в 220 юн., полный в 680 юн.
+  FOG_N:220, FOG_F:680,
+
+  // ─── Цикл дня/ночи ────────────────────────────────────────────────
+  DAY_DUR:40, NIGHT_RATIO:0.10, SUN_S:20.0,
+  AMBIENT_DAY:0.8, AMBIENT_NIGHT:0.8,
+  CYCLE_SMOOTH:8, DAWN_W:0.10, DAWN_NIGHT_MULT:3.5,
+
+  // ─── Цвета солнца ─────────────────────────────────────────────────
+  C_SUN_NOON:[1.00,0.95,0.82],
+  C_SUN_DUSK:[1.00,0.36,0.04],
+  C_SUN_DAWN:[1.00,0.72,0.50],
+
+  // ─── Цвета неба ───────────────────────────────────────────────────
+  C_SKY_DAY_Z: [0.12,0.39,0.78],    C_SKY_DAY_H: [0.38,0.62,0.92],
+  C_SKY_NIGHT_Z:[0.002,0.004,0.018], C_SKY_NIGHT_H:[0.006,0.018,0.060],
+  C_SKY_DUSK_H: [0.52,0.12,0.025],  C_SKY_DUSK_Z: [0.07,0.03,0.13],
+  C_SKY_DAWN_H: [0.22,0.09,0.20],   C_SKY_DAWN_Z: [0.04,0.02,0.10],
+
+  // ─── Камера ───────────────────────────────────────────────────────
+  SPEED:13, HEIGHT:34, FOV:65, PITCH:-0.07,
+  BOB_A:0.85, BOB_F:0.26, SWAY_A:0.005, SWAY_F:0.14, YAW_A:0.018, YAW_F:0.035,
+
+  // ─── Звёзды ───────────────────────────────────────────────────────
+  STARS:1500, STAR_SZ:1.3, STAR_MAX_OP:0.95,
+
+  // ─── Деревья ──────────────────────────────────────────────────────
+  // [FIX 2] TREE_Y_OFFSET: -2 — компенсирует погрешность линейной
+  //   интерполяции вершин рельефа. GPU рендерит точное tH() в каждой
+  //   вершине, но между вершинами высота линейно интерполируется.
+  //   На выпуклых формах рельеф «просаживается» между вершинами,
+  //   и деревья, посаженные по точному tH(), оказываются в воздухе.
+  //   Смещение -2 опускает деревья в землю на ~2 юн. — крона на уровне.
+  TREE_Y_OFFSET:     -2,
+  TREE_WATER_MARGIN:  2.0,
+  TREE_H_MIN:         3.0,
+  TREE_H_MAX:        30,
+  TREE_LAKE_BUF:     0.12,
+  TREE_FOREST_F:     0.008,
+  TREE_FOREST_THR:  -0.08,
+  TREE_CROWN_K:      0.20,
+  // [FIX 1] TREE_FOG_F: 650 — деревья видны на нормальной дистанции.
+  //   Было: 280 — большинство деревьев (55-800 юн.) были полностью
+  //   закрашены цветом неба. Теперь туман деревьев согласован с
+  //   туманом рельефа (FOG_N=220, FOG_F=680).
+  TREE_FOG_F:       650,
+
+  // Виды деревьев
+  SPECIES: [
+    {nm:'Quercus',  ry:0.78, r:[4.5,7.0], col:[0.040,0.115,0.028], h:[3,28], w:0.9, _mult:1},
+    {nm:'Tilia',    ry:0.92, r:[3.5,5.5], col:[0.058,0.152,0.047], h:[2,20], w:0.7, _mult:1},
+    {nm:'Fagus',    ry:0.73, r:[5.0,8.0], col:[0.033,0.092,0.025], h:[5,25], w:0.6, _mult:1},
+    {nm:'Fraxinus', ry:1.35, r:[3.0,5.0], col:[0.054,0.138,0.037], h:[3,20], w:0.5, _mult:1},
+    {nm:'Ulmus',    ry:1.12, r:[4.0,6.0], col:[0.044,0.122,0.032], h:[2,18], w:0.5, _mult:1},
+    {nm:'Carpinus', ry:0.58, r:[3.0,5.0], col:[0.048,0.135,0.039], h:[2,16], w:0.6, _mult:1},
+    {nm:'Alnus',    ry:1.55, r:[2.5,4.0], col:[0.028,0.085,0.023], h:[1,10], w:0.7, _mult:1},
+    {nm:'Juglans',  ry:0.84, r:[5.0,8.0], col:[0.047,0.110,0.030], h:[3,15], w:0.4, _mult:1},
+    {nm:'Corylus',  ry:0.53, r:[2.0,3.5], col:[0.063,0.165,0.051], h:[1,12], w:0.8, _mult:1},
+    {nm:'Castanea', ry:0.80, r:[4.0,6.5], col:[0.041,0.105,0.030], h:[4,18], w:0.5, _mult:1},
+  ],
+
+  // ─── Пресеты качества ─────────────────────────────────────────────
+  PRESETS: {
+    ultra:    { aa:true,  dpr:2.0,  segW:200, segD:150, fpsCap:0,  trees:5000 },
+    high:     { aa:true,  dpr:1.5,  segW:130, segD:100, fpsCap:0,  trees:2500 },
+    medium:   { aa:false, dpr:1.25, segW:80,  segD:60,  fpsCap:0,  trees:1000 },
+    low:      { aa:false, dpr:1.0,  segW:50,  segD:40,  fpsCap:0,  trees:350  },
+    ultralow: { aa:false, dpr:0.75, segW:32,  segD:24,  fpsCap:24, trees:100  },
+  },
+};
+
+// ── Утилиты ──────────────────────────────────────────────────────────
+const lerpC=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const clamp=(v,mn,mx)=>Math.max(mn,Math.min(mx,v));
+const cf=(v,d=5)=>v.toFixed(d);
+const linToSrgb=x=>x<=0.0031308?12.92*x:1.055*Math.pow(x,1/2.4)-0.055;
+const srgbToLin=x=>x<=0.04045?x/12.92:Math.pow((x+0.055)/1.055,2.4);
+function linearToHex(rgb){const b=v=>Math.round(clamp(linToSrgb(v),0,1)*255).toString(16).padStart(2,'0');return '#'+b(rgb[0])+b(rgb[1])+b(rgb[2]);}
+function hexToLinear(hex){return[srgbToLin(parseInt(hex.slice(1,3),16)/255),srgbToLin(parseInt(hex.slice(3,5),16)/255),srgbToLin(parseInt(hex.slice(5,7),16)/255)];}
+
+// ══════════════════════════════════════════════════════════════════════
+//  АВТО-ДЕТЕКТ ПРЕСЕТА: ЗАМЕР FPS
+// ══════════════════════════════════════════════════════════════════════
+const PROBE_SKIP    = 15;
+const PROBE_MEASURE = 60;
+const PROBE_SETTINGS = { aa:false, dpr:1.0, segW:80, segD:60, fpsCap:0, trees:400 };
+const PROBE_THRESHOLDS = [[58,'ultra'],[45,'high'],[30,'medium'],[20,'low'],[0,'ultralow']];
+
+let _probeState='skipping', _probeCount=0, _probeT0=0, _detectedPreset='medium';
+let S = { ...PROBE_SETTINGS };
+let _currentAA = false;
+
+// ══════════════════════════════════════════════════════════════════════
+//  СЦЕНА / КАМЕРА
+// ══════════════════════════════════════════════════════════════════════
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(C.FOV, innerWidth/innerHeight, 0.5, 750);
+camera.position.set(0, C.HEIGHT, 55);
+camera.rotation.x = C.PITCH;
+scene.add(camera);
+
+// ══════════════════════════════════════════════════════════════════════
+//  RENDERER
+// ══════════════════════════════════════════════════════════════════════
+let renderer;
+const bgEl = document.querySelector('.landscape__bg');
+
+function createRenderer(aa) {
+  if (renderer) { renderer.dispose(); bgEl.querySelector('canvas')?.remove(); }
+  renderer = new THREE.WebGLRenderer({ antialias: aa });
+  _currentAA = aa;
+  renderer.setPixelRatio(S.dpr);
+  renderer.setSize(innerWidth, innerHeight);
+  bgEl.appendChild(renderer.domElement);
+}
+createRenderer(S.aa);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  SHARED LIGHTING UNIFORMS
+// ══════════════════════════════════════════════════════════════════════
+const U = {
+  sunDir:  { value: new THREE.Vector3(1, 0.1, 0) },
+  sunC:    { value: new THREE.Vector3(...C.C_SUN_NOON) },
+  sunS:    { value: 0.0 },
+  ambient: { value: C.AMBIENT_NIGHT },
+  fog:     { value: new THREE.Vector3(...C.C_SKY_NIGHT_H) },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  НЕБО
+// ══════════════════════════════════════════════════════════════════════
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: {
+    uZen:    { value: new THREE.Vector3(...C.C_SKY_NIGHT_Z) },
+    uHrz:    { value: new THREE.Vector3(...C.C_SKY_NIGHT_H) },
+    uSunDir: U.sunDir,
+    uSunC:   U.sunC,
+    uSunPow: { value: 0.0 },
+    uDusk:   { value: 0.0 },
+  },
+  vertexShader:`varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`
+    varying vec3 vDir;uniform vec3 uZen,uHrz,uSunDir,uSunC;uniform float uSunPow,uDusk;
+    void main(){
+      vec3 d=normalize(vDir);float t=smoothstep(-0.08,0.62,d.y);vec3 c=mix(uHrz,uZen,t);
+      vec3 sunH=normalize(vec3(uSunDir.x,0.,uSunDir.z));
+      float side=dot(normalize(vec3(d.x,0.,d.z)),sunH);
+      float hband=pow(max(0.,1.-abs(d.y)/0.30),2.6);
+      c=mix(c,uSunC*1.2,hband*uDusk*smoothstep(0.2,1.,side)*0.80);
+      c=mix(c,vec3(0.09,0.03,0.14),uDusk*(1.-t)*0.42);
+      if(uSunPow>0.001){float sc=dot(d,normalize(uSunDir));c+=uSunC*uSunPow*(smoothstep(0.9993,1.,sc)*4.+pow(max(0.,sc),40.)*0.14);}
+      gl_FragColor=vec4(c,1.);
+    }`,
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(680, 24, 12), skyMat);
+scene.add(skyDome);
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЗВЁЗДЫ
+// ══════════════════════════════════════════════════════════════════════
+{
+  const pos=[];
+  for(let i=0;i<C.STARS;i++){
+    const th=Math.random()*6.2832,ph=Math.acos(1-Math.random()*0.93),R=460+Math.random()*80;
+    pos.push(R*Math.sin(ph)*Math.cos(th),Math.abs(R*Math.cos(ph))+20,R*Math.sin(ph)*Math.sin(th));
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  window._lndStarMat=new THREE.PointsMaterial({color:0xddeeff,size:C.STAR_SZ,sizeAttenuation:false,transparent:true,opacity:0.0});
+  camera.add(new THREE.Points(g,_lndStarMat));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  JS TERRAIN HELPERS
+// ══════════════════════════════════════════════════════════════════════
+function _h2(px,py){
+  const rx=Math.sin(px*127.1+py*311.7)*43758.5453;
+  const ry=Math.sin(px*269.5+py*183.3)*43758.5453;
+  return[-1+2*(rx-Math.floor(rx)),-1+2*(ry-Math.floor(ry))];
+}
+function _vn(px,py){
+  const ix=Math.floor(px),iy=Math.floor(py),fx=px-ix,fy=py-iy;
+  const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);
+  const [g00x,g00y]=_h2(ix,  iy  ); const [g10x,g10y]=_h2(ix+1,iy  );
+  const [g01x,g01y]=_h2(ix,  iy+1); const [g11x,g11y]=_h2(ix+1,iy+1);
+  return(1-uy)*((1-ux)*(g00x*fx+g00y*fy)+ux*(g10x*(fx-1)+g10y*fy))
+        +uy*((1-ux)*(g01x*fx+g01y*(fy-1))+ux*(g11x*(fx-1)+g11y*(fy-1)));
+}
+function _fbm(px,py,oct,lac,rgh){let v=0,a=0.5,fr=1;for(let i=0;i<oct;i++){v+=a*_vn(px*fr,py*fr);fr*=lac;a*=rgh;}return v;}
+function _stp(mn,mx,x){const t=Math.max(0,Math.min(1,(x-mn)/(mx-mn)));return t*t*(3-2*t);}
+
+function _terrainH(wx,wz){
+  const base=_fbm(wx*C.BASE_F,wz*C.BASE_F,C.BASE_O,C.BASE_L,C.BASE_R)*C.BASE_A;
+  const hill=_fbm(wx*C.HILL_F,wz*C.HILL_F,C.HILL_O,C.HILL_L,C.HILL_R)*C.HILL_A;
+  const mr  =_fbm(wx*C.MTN_F, wz*C.MTN_F, C.MTN_O, C.MTN_L, C.MTN_R);
+  const lk  =_fbm(wx*C.LAKE_F,wz*C.LAKE_F,3,2.0,0.6);
+  const lm  =_stp(C.LAKE_T+C.LAKE_S,C.LAKE_T,lk);
+  let h=base+hill+_stp(C.MTN_T,C.MTN_T+0.32,mr)*mr*C.MTN_A+C.TERRAIN_LIFT;
+  h=h*(1-lm*0.92)+Math.min(h,C.LAKE_D)*lm*0.92;
+  return h;
+}
+function _lakeVal(wx,wz){return _fbm(wx*C.LAKE_F,wz*C.LAKE_F,3,2.0,0.6);}
+function _forestVal(wx,wz){return _fbm(wx*C.TREE_FOREST_F,wz*C.TREE_FOREST_F,4,2.0,0.55);}
+
+function _seededRand(seed){
+  let s=seed|0;
+  s=((s^61)^(s>>>16))|0; s=Math.imul(s,9)|0;
+  s=(s^(s>>>4))|0; s=Math.imul(s,0x27d4eb2d)|0; s=(s^(s>>>15))|0;
+  if(!s)s=1;
+  return()=>{s=(Math.imul(s,1664525)+1013904223)|0;return(s>>>0)/4294967296;};
+}
+
+function _pickSpecies(noise01,height){
+  const el=C.SPECIES.filter(s=>height>=s.h[0]&&height<=s.h[1]&&s._mult>0);
+  if(!el.length)return null;
+  const tw=el.reduce((s,sp)=>s+sp.w*sp._mult,0);
+  if(!tw)return null;
+  let p=noise01*tw;
+  for(const sp of el){p-=sp.w*sp._mult;if(p<=0)return sp;}
+  return el[el.length-1];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЛАНДШАФТ
+// ══════════════════════════════════════════════════════════════════════
+const WL = C.WATER_LEVEL;
+
+const GLSL_NOISE = `
+vec2 h2(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.+2.*fract(sin(p)*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p,int o,float lac,float rgh){float v=0.,a=.5,fr=1.;for(int i=0;i<10;i++){if(i>=o)break;v+=a*vn(p*fr);fr*=lac;a*=rgh;}return v;}
+`;
+const GLSL_TH = `
+float tH(vec2 xz){
+  float base=fbm(xz*${cf(C.BASE_F)},${C.BASE_O},${cf(C.BASE_L,3)},${cf(C.BASE_R,3)})*${cf(C.BASE_A,1)};
+  float hill=fbm(xz*${cf(C.HILL_F)},${C.HILL_O},${cf(C.HILL_L,3)},${cf(C.HILL_R,3)})*${cf(C.HILL_A,1)};
+  float mr=fbm(xz*${cf(C.MTN_F)},${C.MTN_O},${cf(C.MTN_L,3)},${cf(C.MTN_R,3)});
+  float mm=smoothstep(${cf(C.MTN_T,3)},${cf(C.MTN_T+.32,3)},mr);
+  float lk=fbm(xz*${cf(C.LAKE_F)},3,2.0,0.6);
+  float lm=smoothstep(${cf(C.LAKE_T+C.LAKE_S,3)},${cf(C.LAKE_T,3)},lk);
+  float h=base+hill+mm*mr*${cf(C.MTN_A,1)};
+  h=mix(h,min(h,${cf(C.LAKE_D,1)}),lm*0.92);
+  return h+${cf(C.TERRAIN_LIFT,2)};
+}
+`;
+
+const terrVert = GLSL_NOISE + GLSL_TH + `
+varying float vH;varying float vFD;varying vec3 vWP;
+void main(){
+  vec4 wp=modelMatrix*vec4(position,1.);float h=tH(wp.xz);
+  wp.y=h;vH=h;vWP=wp.xyz;vec4 mv=viewMatrix*wp;vFD=-mv.z;gl_Position=projectionMatrix*mv;
+}`;
+
+// [FIX 3] Туман: smoothstep(FOG_N, FOG_F, vFD) = нормальный дальний туман
+// FOG_N=220 (начало), FOG_F=680 (полный туман)
+const terrFrag=`
+varying float vH;varying float vFD;varying vec3 vWP;
+uniform vec3 uFog,uSunDir,uSunC;uniform float uSunS,uAmbient;
+uniform vec3 uC_DEEPW,uC_WATER,uC_SHORE,uC_GR1,uC_GR2;
+uniform vec3 uC_RK1,uC_RK2,uC_MTN,uC_PEAK,uC_SNOW;
+void main(){
+  float eh=vH-(${cf(WL,1)});vec3 c;
+  if      (eh<-4.5) c=mix(uC_DEEPW,uC_WATER,smoothstep(-5.5,-4.5,eh));
+  else if (eh<-1.5) c=mix(uC_WATER,uC_SHORE,smoothstep(-4.5,-1.5,eh));
+  else if (eh< 3.0) c=mix(uC_SHORE,uC_GR1,  smoothstep(-1.5, 3.0,eh));
+  else if (eh< 9.5) c=mix(uC_GR1,  uC_GR2,  smoothstep( 3.0, 9.5,eh));
+  else if (eh<18.0) c=mix(uC_GR2,  uC_RK1,  smoothstep( 9.5,18.0,eh));
+  else if (eh<28.0) c=mix(uC_RK1,  uC_RK2,  smoothstep(18.0,28.0,eh));
+  else if (eh<38.0) c=mix(uC_RK2,  uC_MTN,  smoothstep(28.0,38.0,eh));
+  else if (eh<46.0) c=mix(uC_MTN,  uC_PEAK, smoothstep(38.0,46.0,eh));
+  else              c=mix(uC_PEAK, uC_SNOW,  smoothstep(46.0,52.0,eh));
+  vec3 dx=dFdx(vWP),dy=dFdy(vWP);vec3 N=normalize(cross(dx,dy));if(N.y<0.)N=-N;
+  float NdS=max(0.,dot(N,uSunDir));
+  vec3 lit=vec3(uAmbient)+uSunS*NdS*uSunC;lit-=(1.-N.y)*0.09;
+  c*=max(lit,vec3(0.02));c=c/(c+vec3(1.));
+  float fog=smoothstep(${cf(C.FOG_N,1)},${cf(C.FOG_F,1)},vFD);
+  c=mix(c,uFog+vec3(0.,.005,.014)*fog,fog);gl_FragColor=vec4(c,1.);
+}`;
+
+const tMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uFog:     U.fog,
+    uSunDir:  U.sunDir,
+    uSunC:    U.sunC,
+    uSunS:    U.sunS,
+    uAmbient: U.ambient,
+    uC_DEEPW:{value:new THREE.Vector3(...C.C_DEEPW)},
+    uC_WATER:{value:new THREE.Vector3(...C.C_WATER)},
+    uC_SHORE:{value:new THREE.Vector3(...C.C_SHORE)},
+    uC_GR1:  {value:new THREE.Vector3(...C.C_GR1)  },
+    uC_GR2:  {value:new THREE.Vector3(...C.C_GR2)  },
+    uC_RK1:  {value:new THREE.Vector3(...C.C_RK1)  },
+    uC_RK2:  {value:new THREE.Vector3(...C.C_RK2)  },
+    uC_MTN:  {value:new THREE.Vector3(...C.C_MTN)  },
+    uC_PEAK: {value:new THREE.Vector3(...C.C_PEAK) },
+    uC_SNOW: {value:new THREE.Vector3(...C.C_SNOW) },
+  },
+  vertexShader:terrVert, fragmentShader:terrFrag,
+  extensions:{derivatives:true},
+});
+
+function makeGeo(segW,segD){const g=new THREE.PlaneGeometry(C.CHUNK_W,C.CHUNK_D,segW,segD);g.rotateX(-Math.PI/2);return g;}
+let currentGeo=makeGeo(S.segW,S.segD);
+const TOTAL=C.CHUNKS*C.CHUNK_D;
+const chunks=Array.from({length:C.CHUNKS},(_,i)=>{
+  const m=new THREE.Mesh(currentGeo,tMat);m.position.z=-i*C.CHUNK_D;scene.add(m);return m;
+});
+function applyGeo(segW,segD){const ng=makeGeo(segW,segD);currentGeo.dispose();currentGeo=ng;for(const ch of chunks)ch.geometry=currentGeo;}
+
+// ══════════════════════════════════════════════════════════════════════
+//  GPU HEIGHTMAP BAKE
+// ══════════════════════════════════════════════════════════════════════
+const HM_RES = 64;
+
+const _hmRT = new THREE.WebGLRenderTarget(HM_RES, HM_RES, {
+  type:          THREE.FloatType,
+  format:        THREE.RGBAFormat,
+  depthBuffer:   false,
+  stencilBuffer: false,
+  minFilter:     THREE.NearestFilter,
+  magFilter:     THREE.NearestFilter,
+});
+
+const _hmBakeMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uMin: { value: new THREE.Vector2() },
+    uMax: { value: new THREE.Vector2() },
+  },
+  vertexShader: `
+    varying vec2 vUV;
+    void main(){ vUV=uv; gl_Position=vec4(position.xy,0.,1.); }
+  `,
+  fragmentShader: GLSL_NOISE + GLSL_TH + `
+    uniform vec2 uMin,uMax;
+    varying vec2 vUV;
+    void main(){
+      vec2 wxz=mix(uMin,uMax,vUV);
+      gl_FragColor=vec4(tH(wxz),0.,0.,1.);
+    }`,
+});
+
+const _hmScene = new THREE.Scene();
+const _hmCam   = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+_hmScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), _hmBakeMat));
+
+const _hmBuffer    = new Float32Array(HM_RES * HM_RES * 4);
+let   _hmCurZBase  = null;
+
+function _bakeHeightmap(worldZBase) {
+  _hmBakeMat.uniforms.uMin.value.set(-C.CHUNK_W * 0.5, worldZBase - C.CHUNK_D);
+  _hmBakeMat.uniforms.uMax.value.set( C.CHUNK_W * 0.5, worldZBase);
+  renderer.setRenderTarget(_hmRT);
+  renderer.render(_hmScene, _hmCam);
+  renderer.readRenderTargetPixels(_hmRT, 0, 0, HM_RES, HM_RES, _hmBuffer);
+  renderer.setRenderTarget(null);
+  _hmCurZBase = worldZBase;
+}
+
+function _sampleHM(lx, lz) {
+  const u  = clamp((lx + C.CHUNK_W * 0.5) / C.CHUNK_W, 0, 1);
+  const v  = clamp(1.0 + lz / C.CHUNK_D, 0, 1);
+  const px = Math.min(Math.floor(u * HM_RES), HM_RES - 1);
+  const py = Math.min(Math.floor(v * HM_RES), HM_RES - 1);
+  return _hmBuffer[(py * HM_RES + px) * 4];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ДЕРЕВЬЯ
+// ══════════════════════════════════════════════════════════════════════
+const TREE_CHUNKS = 2;
+const TREE_TOTAL  = TREE_CHUNKS * C.CHUNK_D;
+
+const MAX_TREES_PATCH = Math.ceil(
+  Math.max(...Object.values(C.PRESETS).map(p=>p.trees)) / TREE_CHUNKS
+);
+
+const crownGeo = new THREE.SphereGeometry(1, 8, 5);
+
+const crownMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uSunDir:  U.sunDir,
+    uSunC:    U.sunC,
+    uSunS:    U.sunS,
+    uAmbient: U.ambient,
+    uFog:     U.fog,
+    uFogN:    { value: C.FOG_N },           // [FIX 1] согласовано с туманом рельефа
+    uFogF:    { value: C.TREE_FOG_F },      // [FIX 1] деревья видны до 650 юн.
+  },
+  vertexShader:`
+    varying vec3 vN,vCol;varying float vFD;
+    void main(){
+      #ifdef USE_INSTANCING_COLOR
+        vCol=instanceColor*(0.78+0.22*max(0.,normal.y));
+      #else
+        vCol=vec3(0.06,0.15,0.04);
+      #endif
+      vN=normalize(mat3(modelMatrix)*normal);
+      vec4 wp;
+      #ifdef USE_INSTANCING
+        wp=modelMatrix*instanceMatrix*vec4(position,1.);
+      #else
+        wp=modelMatrix*vec4(position,1.);
+      #endif
+      vec4 mv=viewMatrix*wp;vFD=-mv.z;gl_Position=projectionMatrix*mv;
+    }`,
+  fragmentShader:`
+    varying vec3 vN,vCol;varying float vFD;
+    uniform vec3 uSunDir,uSunC,uFog;uniform float uSunS,uAmbient,uFogN,uFogF;
+    void main(){
+      vec3 N=normalize(vN);
+      float NdL=max(0.,dot(N,uSunDir));
+      vec3 lit=vec3(uAmbient)+uSunS*NdL*uSunC;
+      vec3 c=vCol*max(lit,vec3(0.02));
+      c=c/(c+vec3(1.));
+      float fog=smoothstep(uFogN,uFogF,vFD);
+      c=mix(c,uFog,fog);gl_FragColor=vec4(c,1.);
+    }`,
+});
+
+let treesPerPatch = Math.floor((C.PRESETS.medium.trees) / TREE_CHUNKS);
+const _dummy = new THREE.Object3D();
+const _col   = new THREE.Color();
+
+const QUEUE_FRAMES = 1;
+let _patchQueue   = [];
+let _queueTick    = 0;
+
+function _enqueuePatch(mesh, worldZBase) {
+  mesh.count = 0;
+  _patchQueue = _patchQueue.filter(e => e.mesh !== mesh);
+  _patchQueue.push({ mesh, worldZBase });
+}
+
+function _processQueue() {
+  if (!_patchQueue.length) return;
+  _queueTick++;
+  if (_queueTick % QUEUE_FRAMES !== 0) return;
+  const { mesh, worldZBase } = _patchQueue.shift();
+  _bakeHeightmap(worldZBase);
+  _generatePatch(mesh, worldZBase);
+}
+
+function _generatePatch(mesh, worldZBase) {
+  const rand = _seededRand(Math.round(worldZBase));
+  const MAX  = mesh.userData.max;
+  let count  = 0;
+  const tries = Math.min(Math.max(MAX * 4, 100), 8000);
+
+  const H_MIN = Math.max(C.TREE_H_MIN, C.WATER_LEVEL + C.TREE_WATER_MARGIN);
+
+  for (let t = 0; t < tries && count < MAX; t++) {
+    const lx = (rand() - 0.5) * C.CHUNK_W;
+    const lz = -rand() * C.CHUNK_D;
+    const wx = lx, wz = worldZBase + lz;
+
+    if (_forestVal(wx, wz) < C.TREE_FOREST_THR) continue;
+
+    const h = _sampleHM(lx, lz);
+
+    if (h < H_MIN || h > C.TREE_H_MAX) continue;
+
+    if (_stp(C.LAKE_T + C.LAKE_S, C.LAKE_T, _lakeVal(wx, wz)) > C.TREE_LAKE_BUF) continue;
+
+    const sn = (_fbm(wx * 0.019, wz * 0.019, 2, 2.0, 0.5) + 1) * 0.5;
+    const sp  = _pickSpecies(sn, h);
+    if (!sp) continue;
+
+    const r = sp.r[0] + rand() * (sp.r[1] - sp.r[0]);
+
+    // [FIX 2] TREE_Y_OFFSET=-2: компенсируем просадку линейно-интерполированного рельефа
+    const centerY = h + r * sp.ry * (1.0 - C.TREE_CROWN_K) + C.TREE_Y_OFFSET;
+
+    if (centerY + r * sp.ry < h) continue;
+
+    _dummy.position.set(lx, centerY, lz);
+    _dummy.scale.set(r, r * sp.ry, r);
+    _dummy.updateMatrix();
+    mesh.setMatrixAt(count, _dummy.matrix);
+
+    const v = 0.80 + rand() * 0.40;
+    _col.setRGB(sp.col[0] * v, sp.col[1] * v, sp.col[2] * v);
+    mesh.setColorAt(count, _col);
+    count++;
+  }
+
+  mesh.count = count;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+const treePatches = Array.from({length:TREE_CHUNKS}, (_,i) => {
+  const m = new THREE.InstancedMesh(crownGeo, crownMat, MAX_TREES_PATCH);
+  m.frustumCulled = false;
+  m.userData.max  = treesPerPatch;
+  m.position.z    = -i * C.CHUNK_D;
+  _bakeHeightmap(m.position.z);
+  _generatePatch(m, m.position.z);
+  scene.add(m);
+  return m;
+});
+
+function _rebuildTrees(totalTrees) {
+  treesPerPatch = Math.floor(totalTrees / treePatches.length);
+  _patchQueue = [];
+  for (const p of treePatches) {
+    p.userData.max = treesPerPatch;
+    _bakeHeightmap(p.position.z);
+    _generatePatch(p, p.position.z);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ПРИМЕНЕНИЕ ПРЕСЕТА
+// ══════════════════════════════════════════════════════════════════════
+function applyPreset(name) {
+  const p=C.PRESETS[name]; S={...p};
+  if (p.aa!==_currentAA) createRenderer(p.aa);
+  else { renderer.setPixelRatio(p.dpr); renderer.setSize(innerWidth,innerHeight); }
+  applyGeo(p.segW,p.segD);
+  fpsCap_ms=p.fpsCap>0?1000/p.fpsCap:0;
+  _rebuildTrees(p.trees);
+  if (C.DEBUG && _lndDebug) _lndDebug.syncPreset(name);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЦИКЛ ДНЯ/НОЧИ
+// ══════════════════════════════════════════════════════════════════════
+const DAY_FRAC=1-C.NIGHT_RATIO;
+const sunDirV=new THREE.Vector3();
+
+function updateCycle(time) {
+  const p=(time%C.DAY_DUR)/C.DAY_DUR;
+  const sunAngle=p<DAY_FRAC?(p/DAY_FRAC)*Math.PI:Math.PI+((p-DAY_FRAC)/C.NIGHT_RATIO)*Math.PI;
+  const sx=Math.cos(sunAngle), sy=Math.sin(sunAngle);
+  sunDirV.set(sx,sy,-0.10).normalize();
+
+  const duskW=sy>=0?C.DAWN_W:C.DAWN_W*C.DAWN_NIGHT_MULT;
+  const dusk=Math.exp(-(sy*sy)/(duskW*duskW));
+  const isSunrise=sx>0;
+  const duskSunC=isSunrise?C.C_SUN_DAWN:C.C_SUN_DUSK;
+  const duskSkyH=isSunrise?C.C_SKY_DAWN_H:C.C_SKY_DUSK_H;
+  const duskSkyZ=isSunrise?C.C_SKY_DAWN_Z:C.C_SKY_DUSK_Z;
+
+  const horizF=clamp(1-Math.abs(sy)*3.5,0,1)*dusk;
+  const sunCol=lerpC(C.C_SUN_NOON,duskSunC,horizF);
+  const sunStr=Math.max(0,sy)*C.SUN_S;
+
+  const T=1/(1+Math.exp(sy*C.CYCLE_SMOOTH));
+  const ambient=C.AMBIENT_NIGHT+(C.AMBIENT_DAY-C.AMBIENT_NIGHT)*(1-T);
+  _lndStarMat.opacity=clamp(T*C.STAR_MAX_OP+dusk*0.16,0,C.STAR_MAX_OP);
+
+  const dayF=1-T;
+  let skyZ=lerpC(C.C_SKY_NIGHT_Z,C.C_SKY_DAY_Z,dayF);
+  let skyH=lerpC(C.C_SKY_NIGHT_H,C.C_SKY_DAY_H,dayF);
+  skyZ=lerpC(skyZ,duskSkyZ,dusk*0.65);
+  skyH=lerpC(skyH,duskSkyH,dusk*0.90);
+
+  U.sunDir.value.copy(sunDirV);
+  U.sunC.value.set(...sunCol);
+  U.sunS.value   =sunStr;
+  U.ambient.value=ambient;
+  U.fog.value.set(...skyH);
+
+  skyMat.uniforms.uZen.value.set(...skyZ);
+  skyMat.uniforms.uHrz.value.set(...skyH);
+  skyMat.uniforms.uSunPow.value=sy>-0.10?clamp((sy+0.10)*5,0,1):0;
+  skyMat.uniforms.uDusk.value=dusk;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  LOOP
+// ══════════════════════════════════════════════════════════════════════
+const clk=new THREE.Clock();
+let t=0.04*C.DAY_DUR;
+let fpsCap_ms=0, lastFrameTime=0;
+let _fpsFrames=0, _fpsPrev=performance.now(), _fpsSmooth=60;
+
+(function loop(){
+  requestAnimationFrame(loop);
+  const now=performance.now();
+
+  // ── Probe ─────────────────────────────────────────────────────────
+  if (_probeState!=='done') {
+    _probeCount++;
+    if (_probeState==='skipping'&&_probeCount>=PROBE_SKIP) {
+      _probeState='measuring';_probeCount=0;_probeT0=now;
+    } else if (_probeState==='measuring'&&_probeCount>=PROBE_MEASURE) {
+      const fps=PROBE_MEASURE/((now-_probeT0)/1000);
+      _probeState='done';
+      for(const[th,nm]of PROBE_THRESHOLDS){if(fps>=th){_detectedPreset=nm;break;}}
+      console.log(`[landscape] probe fps: ${fps.toFixed(1)} → preset: ${_detectedPreset}`);
+      applyPreset(_detectedPreset);
+      if(C.DEBUG&&_lndDebug){
+        _lndDebug.probeEl.textContent=`probe: ${fps.toFixed(0)} fps → ${_detectedPreset}`;
+        _lndDebug.probeEl.style.color='rgba(214,236,65,0.80)';
+      }
+    }
+  }
+
+  if (fpsCap_ms>0&&now-lastFrameTime<fpsCap_ms) return;
+  lastFrameTime=now;
+
+  _fpsFrames++;
+  if (now-_fpsPrev>=800) {
+    _fpsSmooth=0.7*_fpsSmooth+0.3*(_fpsFrames/((now-_fpsPrev)/1000));
+    if (C.DEBUG&&_lndDebug) {
+      _lndDebug.fps.textContent=`fps: ${_fpsSmooth.toFixed(0)}`;
+      _lndDebug.tri.textContent=`tri: ${(S.segW*S.segD*2*C.CHUNKS/1000).toFixed(0)}k | trees: ${treePatches.reduce((s,p)=>s+p.count,0)}`;
+    }
+    _fpsFrames=0;_fpsPrev=now;
+  }
+
+  const dt=Math.min(clk.getDelta(),0.05); t+=dt;
+  camera.position.z-=C.SPEED*dt;
+  camera.position.y =C.HEIGHT+Math.sin(t*C.BOB_F *Math.PI*2)*C.BOB_A;
+  camera.rotation.z =         Math.sin(t*C.SWAY_F*Math.PI*2)*C.SWAY_A;
+  camera.rotation.y =         Math.sin(t*C.YAW_F *Math.PI*2)*C.YAW_A;
+  camera.rotation.x =C.PITCH;
+
+  skyDome.position.copy(camera.position);
+  updateCycle(t);
+
+  for(const ch of chunks)
+    if(ch.position.z-C.CHUNK_D*0.5>camera.position.z-10)
+      ch.position.z-=TOTAL;
+
+  for(const p of treePatches) {
+    if(p.position.z - C.CHUNK_D > camera.position.z - 10) {
+      p.position.z -= TREE_TOTAL;
+      _enqueuePatch(p, p.position.z);
+    }
+  }
+
+  _processQueue();
+
+  renderer.render(scene, camera);
+})();
+
+// ══════════════════════════════════════════════════════════════════════
+//  DEBUG-ПАНЕЛЬ
+// ══════════════════════════════════════════════════════════════════════
+const POLY_MAP=[
+  {segW:32, segD:24,  label:'ultralow'},
+  {segW:50, segD:40,  label:'low'     },
+  {segW:80, segD:60,  label:'medium'  },
+  {segW:130,segD:100, label:'high'    },
+  {segW:200,segD:150, label:'ultra'   },
+  {segW:300,segD:225, label:'extreme' },
+];
+const PRESET_NAMES=['ultralow','low','medium','high','ultra'];
+const BIOME_DEFS=[
+  ['uC_DEEPW','Глубокая вода',C.C_DEEPW],['uC_WATER','Вода',C.C_WATER],
+  ['uC_SHORE','Берег',C.C_SHORE],['uC_GR1','Трава 1',C.C_GR1],
+  ['uC_GR2','Трава 2',C.C_GR2],['uC_RK1','Скала 1',C.C_RK1],
+  ['uC_RK2','Скала 2',C.C_RK2],['uC_MTN','Гора',C.C_MTN],
+  ['uC_PEAK','Пик',C.C_PEAK],['uC_SNOW','Снег',C.C_SNOW],
+];
+
+window._lndDebug=null;
+
+if (C.DEBUG) {
+  const root=document.querySelector('.landscape');
+  const mkEl=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const mkRow=(label,ctrl,valEl)=>{const r=mkEl('div','landscape__ctrl-row');r.appendChild(mkEl('span','landscape__ctrl-label',label));r.appendChild(ctrl);if(valEl)r.appendChild(valEl);return r;};
+  const mkVal=t=>mkEl('span','landscape__ctrl-val',t);
+  const mkSep=()=>mkEl('hr','landscape__ctrl-sep');
+  const mkToggle=(checked,onChange)=>{const w=mkEl('label','landscape__toggle'),i=mkEl('input');i.type='checkbox';i.checked=checked;i.addEventListener('change',()=>onChange(i.checked));w.appendChild(i);w.appendChild(mkEl('span','lnd-track'));return{wrap:w,inp:i};};
+  const mkRange=(mn,mx,step,val,onInput)=>{const i=mkEl('input');i.type='range';i.className='landscape__range';Object.assign(i,{min:mn,max:mx,step,value:val});i.addEventListener('input',()=>onInput(parseFloat(i.value)));return i;};
+
+  const ctrl=mkEl('details','landscape__ctrl');ctrl.setAttribute('open','');
+  ctrl.appendChild(mkEl('summary',null,'Render settings'));
+  const body=mkEl('div','landscape__ctrl-body');ctrl.appendChild(body);
+
+  const probeEl=mkEl('div','landscape__ctrl-probe','⏳ measuring...');
+  body.appendChild(probeEl);body.appendChild(mkSep());
+
+  const presetV=mkVal('medium');
+  let aaInp,dprR,dprV,polyR,polyV,fpscR,fpscV;
+  const presetR=mkRange(0,4,1,2,idx=>{const name=PRESET_NAMES[idx];presetV.textContent=name;applyPreset(name);});
+  body.appendChild(mkRow('Пресет',presetR,presetV));body.appendChild(mkSep());
+
+  const tog=mkToggle(S.aa,v=>{S.aa=v;createRenderer(v);});aaInp=tog.inp;
+  body.appendChild(mkRow('AA (MSAA)',tog.wrap));
+
+  dprV=mkVal(S.dpr.toFixed(2)+'×');
+  dprR=mkRange(0.5,2.0,0.25,S.dpr,v=>{S.dpr=v;renderer.setPixelRatio(v);renderer.setSize(innerWidth,innerHeight);dprV.textContent=v.toFixed(2)+'×';});
+  body.appendChild(mkRow('DPR (разрешение)',dprR,dprV));
+
+  polyV=mkVal('medium');
+  polyR=mkRange(0,POLY_MAP.length-1,1,2,idx=>{const p=POLY_MAP[idx];S.segW=p.segW;S.segD=p.segD;applyGeo(p.segW,p.segD);polyV.textContent=p.label;});
+  body.appendChild(mkRow('Полигоны',polyR,polyV));
+
+  fpscV=mkVal('off');
+  fpscR=mkRange(0,60,6,0,v=>{S.fpsCap=v;fpsCap_ms=v>0?1000/v:0;fpscV.textContent=v===0?'off':v+'fps';});
+  body.appendChild(mkRow('FPS cap',fpscR,fpscV));body.appendChild(mkSep());
+
+  const statRow=mkEl('div');statRow.style.cssText='display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.35)';
+  const fpsEl=mkEl('span',null,'fps: —'),triEl=mkEl('span',null,'tri: —');
+  statRow.appendChild(fpsEl);statRow.appendChild(triEl);body.appendChild(statRow);body.appendChild(mkSep());
+
+  // ── Цвета биомов ─────────────────────────────────────────────────
+  const biomeSub=mkEl('details','landscape__ctrl-sub');
+  biomeSub.appendChild(mkEl('summary',null,'Цвета биомов'));
+  const biomeBody=mkEl('div','landscape__ctrl-sub-body');
+  for(const[uName,label,initLinear]of BIOME_DEFS){
+    const picker=mkEl('input');picker.type='color';picker.className='landscape__color-input';picker.value=linearToHex(initLinear);
+    picker.addEventListener('input',()=>{const[r,g,b]=hexToLinear(picker.value);tMat.uniforms[uName].value.set(r,g,b);});
+    biomeBody.appendChild(mkRow(label,picker));
+  }
+  biomeSub.appendChild(biomeBody);body.appendChild(biomeSub);
+  body.appendChild(mkSep());
+
+  // ── Деревья ──────────────────────────────────────────────────────
+  let _treeMult=1.0, _rebuildTimer=null;
+  function scheduledRebuild(){
+    clearTimeout(_rebuildTimer);
+    _rebuildTimer=setTimeout(()=>_rebuildTrees(Math.round(S.trees*_treeMult)),300);
+  }
+
+  const treeCountV=mkVal(`${S.trees}`);
+  const treeCountR=mkRange(0,2.0,0.1,1.0,v=>{
+    _treeMult=v;treeCountV.textContent=Math.round(S.trees*v);scheduledRebuild();
+  });
+  body.appendChild(mkRow('Деревья (×)',treeCountR,treeCountV));
+
+  const tyoV=mkVal(C.TREE_Y_OFFSET.toFixed(1)+'u');
+  const tyoR=mkRange(-8,4,0.5,C.TREE_Y_OFFSET,v=>{
+    C.TREE_Y_OFFSET=v;tyoV.textContent=v.toFixed(1)+'u';scheduledRebuild();
+  });
+  body.appendChild(mkRow('Y-поправка (±)',tyoR,tyoV));
+
+  const fthrV=mkVal(C.TREE_FOREST_THR.toFixed(2));
+  const fthrR=mkRange(-0.30,0.20,0.01,C.TREE_FOREST_THR,v=>{
+    C.TREE_FOREST_THR=v;fthrV.textContent=v.toFixed(2);scheduledRebuild();
+  });
+  body.appendChild(mkRow('Покрытие леса',fthrR,fthrV));
+
+  const wmV=mkVal(C.TREE_WATER_MARGIN.toFixed(1));
+  const wmR=mkRange(0,8,0.5,C.TREE_WATER_MARGIN,v=>{
+    C.TREE_WATER_MARGIN=v;wmV.textContent=v.toFixed(1);scheduledRebuild();
+  });
+  body.appendChild(mkRow('Отступ от воды',wmR,wmV));
+
+  const lbufV=mkVal(C.TREE_LAKE_BUF.toFixed(2));
+  const lbufR=mkRange(0,0.5,0.02,C.TREE_LAKE_BUF,v=>{
+    C.TREE_LAKE_BUF=v;lbufV.textContent=v.toFixed(2);scheduledRebuild();
+  });
+  body.appendChild(mkRow('Буфер берега',lbufR,lbufV));
+
+  const ckV=mkVal(C.TREE_CROWN_K.toFixed(2));
+  const ckR=mkRange(0,0.60,0.05,C.TREE_CROWN_K,v=>{
+    C.TREE_CROWN_K=v;ckV.textContent=v.toFixed(2);scheduledRebuild();
+  });
+  body.appendChild(mkRow('Глубина кроны',ckR,ckV));
+
+  // Виды деревьев
+  const specSub=mkEl('details','landscape__ctrl-sub');
+  specSub.appendChild(mkEl('summary',null,'Виды деревьев'));
+  const specBody=mkEl('div','landscape__ctrl-sub-body');
+  for(const sp of C.SPECIES){
+    const v=mkVal('1.0×');
+    const r=mkRange(0,2.0,0.1,1.0,val=>{sp._mult=val;v.textContent=val.toFixed(1)+'×';scheduledRebuild();});
+    specBody.appendChild(mkRow(sp.nm,r,v));
+  }
+  specSub.appendChild(specBody);body.appendChild(specSub);
+
+  root.appendChild(ctrl);
+
+  _lndDebug={
+    fps:fpsEl, tri:triEl, probeEl,
+    syncPreset(name){
+      const idx=PRESET_NAMES.indexOf(name),p=C.PRESETS[name];
+      if(idx>=0){presetR.value=idx;presetV.textContent=name;}
+      aaInp.checked=p.aa;
+      dprR.value=p.dpr;dprV.textContent=p.dpr.toFixed(2)+'×';
+      fpscR.value=p.fpsCap;fpscV.textContent=p.fpsCap===0?'off':p.fpsCap+'fps';
+      const pi=POLY_MAP.findIndex(m=>m.segW===p.segW);
+      if(pi>=0){polyR.value=pi;polyV.textContent=POLY_MAP[pi].label;}
+      treeCountV.textContent=Math.round(p.trees*_treeMult);
+    }
+  };
+}
+</script>
+</div>

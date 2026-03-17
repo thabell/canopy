@@ -1,0 +1,912 @@
+<div class="landscape">
+<style>
+.landscape__bg,.landscape__bg *{margin:0;padding:0;box-sizing:border-box !important;}
+.landscape{position:relative;width:100%;height:100vh;overflow:hidden;background:#010205}
+.landscape__bg{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0}
+.landscape__bg canvas{display:block;width:100%!important;height:100%!important}
+.landscape__content{position:relative;z-index:10;
+   /*  background:rgba(0,0,0,0.2); затемнение фона под надпись поверх */
+  height:100%;}
+.landscape__content *:not(a):not(button):not(.btn):not(a *):not(button *):not(.btn *){background:none!important}
+.landscape__ctrl{position:absolute;bottom:20px;right:20px;z-index:100;background:rgba(0,0,0,0.58);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 18px;color:#fff;font:12px/1.6 'Courier New',monospace;min-width:260px;user-select:none}
+.landscape__ctrl>summary{cursor:pointer;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:.06em;list-style:none;display:flex;align-items:center;gap:6px}
+.landscape__ctrl>summary::-webkit-details-marker{display:none}
+.landscape__ctrl>summary::before{content:'⚙';font-size:13px}
+.landscape__ctrl[open]>summary{margin-bottom:12px}
+.landscape__ctrl-body{display:flex;flex-direction:column;gap:9px}
+.landscape__ctrl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.landscape__ctrl-label{font-size:11px;color:rgba(255,255,255,0.65);white-space:nowrap;flex:1}
+.landscape__ctrl-val{font-size:11px;color:#d6ec41;min-width:60px;text-align:right;white-space:nowrap}
+.landscape__ctrl-sep{border:none;border-top:1px solid rgba(255,255,255,0.07);margin:1px 0}
+.landscape__ctrl-probe{font-size:10px;color:rgba(255,165,0,0.85);min-height:14px}
+.landscape__toggle{position:relative;width:36px;height:20px;flex-shrink:0}
+.landscape__toggle input{opacity:0;width:0;height:0;position:absolute}
+.landscape__toggle .lnd-track{position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:20px;cursor:pointer;transition:background .2s}
+.landscape__toggle input:checked+.lnd-track{background:#d6ec41}
+.landscape__toggle .lnd-track::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.landscape__toggle input:checked+.lnd-track::before{transform:translateX(16px)}
+.landscape__range{-webkit-appearance:none;width:100px;height:3px;background:rgba(255,255,255,0.20);border-radius:2px;cursor:pointer;outline:none;flex-shrink:0}
+.landscape__range::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;background:#d6ec41;border-radius:50%;transition:transform .1s}
+.landscape__range::-webkit-slider-thumb:hover{transform:scale(1.3)}
+.landscape__range::-moz-range-thumb{width:13px;height:13px;border:none;background:#d6ec41;border-radius:50%}
+.landscape__ctrl-sub{border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 10px}
+.landscape__ctrl-sub>summary{cursor:pointer;font-size:10px;color:rgba(255,255,255,0.40);letter-spacing:.05em;list-style:none;display:flex;align-items:center;gap:5px}
+.landscape__ctrl-sub>summary::-webkit-details-marker{display:none}
+.landscape__ctrl-sub>summary::before{content:'▸';display:inline-block;transition:transform .15s}
+.landscape__ctrl-sub[open]>summary::before{transform:rotate(90deg)}
+.landscape__ctrl-sub[open]>summary{margin-bottom:8px}
+.landscape__ctrl-sub-body{display:flex;flex-direction:column;gap:6px}
+.landscape__color-input{width:32px;height:20px;border:none;border-radius:4px;cursor:pointer;padding:0;background:none;flex-shrink:0}
+#lnd-pause-btn{box-sizing:border-box !important; display: flex;align-items:center; justify-content:center; position:absolute;bottom:20px;right:20px;z-index:100;width:60px !important;height:60px !important;max-width:60px !important;max-height:60px !important;min-width:60px !important;min-height:60px !important;border-radius:30px;border:none;background:rgba(0,0,0,0.55);backdrop-filter:blur(12px);box-shadow:0 0 0 1px rgba(255,255,255,0.10);color:#d6ec41;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .18s,transform .12s,box-shadow .18s;}
+#lnd-pause-btn:hover{background:rgba(214,236,65,0.18);box-shadow:0 0 0 1px rgba(214,236,65,0.35);transform:scale(1.08);}
+#lnd-pause-btn:active{transform:scale(0.95);}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<div class="landscape__bg"></div>
+<div class="landscape__content">
+
+</div>
+<script>
+if(typeof THREE==='undefined') throw new Error('[lnd] THREE not loaded');
+
+const C={
+  DEBUG:false,
+  CHUNK_W:850,CHUNK_W_MOBILE:500,CHUNK_D:235,CHUNKS:3,
+  MTN_F:0.0062,MTN_A:48,MTN_O:8,MTN_R:0.81,MTN_L:2.0,MTN_T:0.07,
+  HILL_F:0.013,HILL_A:14,HILL_O:6,HILL_R:0.55,HILL_L:2.05,
+  BASE_F:0.019,BASE_A:7,BASE_O:5,BASE_R:0.57,BASE_L:2.06,
+  LAKE_F:0.006,LAKE_T:-0.10,LAKE_S:0.12,LAKE_D:-6.0,
+  TERRAIN_LIFT:1.0,WATER_LEVEL:0.0,
+  C_DEEPW:[0.010,0.028,0.060],C_WATER:[0.016,0.048,0.090],
+  C_SHORE:[0.035,0.065,0.045],C_GR1:[0.090,0.220,0.082],
+  C_GR2:[0.095,0.255,0.178],C_RK1:[0.140,0.152,0.105],
+  C_RK2:[0.210,0.210,0.150],C_MTN:[0.260,0.260,0.260],
+  C_PEAK:[0.355,0.380,0.415],C_SNOW:[0.710,0.775,0.840],
+  FOG_N:50,FOG_F:500,FAR_PLANE:600,
+  DAY_DUR:60,NIGHT_RATIO:0.08,SUN_S:10.0,
+  AMBIENT_DAY:0.8,AMBIENT_NIGHT:0.8,
+  CYCLE_SMOOTH:8,DAWN_W:0.10,DAWN_NIGHT_MULT:3.5,
+  C_SUN_NOON:[1.00,0.95,0.82],C_SUN_DUSK:[1.00,0.36,0.04],C_SUN_DAWN:[1.00,0.72,0.50],
+  C_SKY_DAY_Z:[0.12,0.39,0.78],C_SKY_DAY_H:[0.38,0.62,0.92],
+  C_SKY_NIGHT_Z:[0.002,0.004,0.018],C_SKY_NIGHT_H:[0.006,0.018,0.060],
+  C_SKY_DUSK_H:[0.52,0.12,0.025],C_SKY_DUSK_Z:[0.07,0.03,0.13],
+  C_SKY_DAWN_H:[0.22,0.09,0.20],C_SKY_DAWN_Z:[0.04,0.02,0.10],
+  SPEED:13,HEIGHT:34,FOV:65,PITCH:-0.07,
+  BOB_A:0.85,BOB_F:0.26,SWAY_A:0.005,SWAY_F:0.14,YAW_A:0.018,YAW_F:0.035,
+  STARS:1500,STAR_SZ:1.3,STAR_MAX_OP:0.95,
+  WIND_STRENGTH:1.1,WIND_SPEED:1.1,
+  TREE_SCALE:0.6,TREE_H_MIN:0.5,TREE_H_MAX:10.0,
+  TREE_FOREST_F:0.008,TREE_FOREST_THR:-0.40,
+  TREE_GRID_STEP:13,TREE_DENSITY_FREQ:0.01,TREE_DENSITY_THR:0.28,
+  TREE_ZONE_DESKTOP:{left:180,right:180},
+  TREE_ZONE_MOBILE:{left:100,right:100},
+  PRESETS:{
+    extreme:{aa:true, dpr:2.0, segW:200,segD:150,fpsCap:0,gridStep:9, detail:true, complexCrown:true, minFPS:50},
+    ultra:  {aa:true, dpr:2.0, segW:200,segD:150,fpsCap:36,gridStep:11,detail:true, complexCrown:true, minFPS:25},
+    high:   {aa:true, dpr:1.5, segW:130,segD:100,fpsCap:36,gridStep:10,detail:true, complexCrown:false,minFPS:25},
+    medium: {aa:false,dpr:1.25,segW:80, segD:60, fpsCap:36,gridStep:15,detail:false,complexCrown:false,minFPS:25},
+    low:    {aa:false,dpr:1.0, segW:50, segD:40, fpsCap:36,gridStep:20,detail:false,complexCrown:false,minFPS:25},
+    ultralow:{aa:false,dpr:1.0,segW:32,segD:24, fpsCap:24,gridStep:25,detail:false,complexCrown:false,minFPS:0},
+  },
+  PROBE_THRESHOLDS:[[57,'extreme'],[54,'ultra'],[45,'high'],[30,'medium'],[20,'low'],[0,'ultralow']],
+  ADAPTIVE_INTERVAL:7,ADAPTIVE_LOW_COUNT:1,
+
+  // ── SPECIES ───────────────────────────────────────────────────────────
+  // crown params tuned для Worley-подхода (из Crown Tuner v2):
+  //   crownType, blobSpreadX/Y, blobYBias, crownNoise, crownFreq, lumpMix
+  // leaf params без изменений: leafShape, edgeSharpness, leafDensity, leafScale, detailRough, leafAspect
+  SPECIES:[
+    {nm:'Quercus', nmRu:'Дуб', ry:0.78,r:[4.5,7],col:[0.040,0.115,0.028],h:[3,28],w:0.9,_mult:1,
+     crownType:'round',blobSpreadX:1.25,blobSpreadY:1.90,blobYBias:-0.65,crownNoise:0.41,crownFreq:2.1,lumpMix:0.00,
+     leafShape:'lobed',edgeSharpness:0.70,leafDensity:0.56,leafScale:2.35,detailRough:0.80,leafCluster:0.45,leafAspect:1.00},
+    {nm:'Tilia', nmRu:'Липа', ry:0.92,r:[3.5,5.5],col:[0.058,0.152,0.047],h:[0,5],w:0.7,_mult:1,
+     crownType:'round',blobSpreadX:0.80,blobSpreadY:0.85,blobYBias:-0.55,crownNoise:0.43,crownFreq:4.8,lumpMix:0.40,
+     leafShape:'round',edgeSharpness:0.45,leafDensity:0.73,leafScale:1.70,detailRough:0.60,leafCluster:0.10,leafAspect:1.15},
+    {nm:'Fagus', nmRu:'Бук', ry:0.73,r:[5,8],col:[0.033,0.092,0.025],h:[0,1],w:0.3,_mult:1,
+     crownType:'round',blobSpreadX:1.35,blobSpreadY:0.35,blobYBias:0.15,crownNoise:0.72,crownFreq:8.0,lumpMix:0.00,
+     leafShape:'round',edgeSharpness:0.85,leafDensity:0.69,leafScale:2.50,detailRough:0.90,leafCluster:1.00,leafAspect:1.25},
+    {nm:'Fraxinus', nmRu:'Ясень', ry:1.35,r:[3,5],col:[0.054,0.138,0.037],h:[3,20],w:0.5,_mult:1,
+     crownType:'spreading',blobSpreadX:1.30,blobSpreadY:1.45,blobYBias:-1.00,crownNoise:0.58,crownFreq:6.1,lumpMix:0.56,
+     leafShape:'pinnate',edgeSharpness:1.00,leafDensity:0.63,leafScale:0.70,detailRough:0.70,leafCluster:-0.05,leafAspect:1.00},
+    {nm:'Ulmus', nmRu:'Вяз', ry:1.12,r:[4,6],col:[0.044,0.122,0.032],h:[2,18],w:0.5,_mult:1,
+     crownType:'spreading',blobSpreadX:1.10,blobSpreadY:1.45,blobYBias:-0.40,crownNoise:0.61,crownFreq:2.7,lumpMix:0.30,
+     leafShape:'serrated',edgeSharpness:1.00,leafDensity:0.68,leafScale:0.95,detailRough:0.90,leafCluster:-0.30,leafAspect:0.95},
+    {nm:'Carpinus', nmRu:'Граб', ry:0.58,r:[3,5],col:[0.048,0.135,0.039],h:[2,16],w:0.6,_mult:1,
+     crownType:'round',blobSpreadX:1.45,blobSpreadY:2.50,blobYBias:0.45,crownNoise:0.38,crownFreq:3.8,lumpMix:0.12,
+     leafShape:'serrated',edgeSharpness:1.00,leafDensity:0.55,leafScale:1.60,detailRough:0.90,leafCluster:1.00,leafAspect:1.30},
+    {nm:'Alnus', nmRu:'Ольха', ry:1.55,r:[2.5,4],col:[0.028,0.085,0.023],h:[0,5],w:0.7,_mult:1,
+     crownType:'columnar',blobSpreadX:2.50,blobSpreadY:1.85,blobYBias:0.25,crownNoise:0.29,crownFreq:8.0,lumpMix:0.00,
+     leafShape:'round',edgeSharpness:1.00,leafDensity:0.71,leafScale:2.50,detailRough:0.90,leafCluster:0.15,leafAspect:1.10},
+    {nm:'Juglans', nmRu:'Орех', ry:0.84,r:[5,8],col:[0.047,0.110,0.030],h:[3,15],w:0.4,_mult:1,
+     crownType:'spreading',blobSpreadX:0.95,blobSpreadY:1.20,blobYBias:-0.70,crownNoise:0.52,crownFreq:1.9,lumpMix:0.30,
+     leafShape:'pinnate',edgeSharpness:0.20,leafDensity:0.58,leafScale:2.50,detailRough:0.30,leafCluster:1.00,leafAspect:1.30},
+    {nm:'Corylus', nmRu:'Лещина', ry:0.53,r:[2,3.5],col:[0.063,0.165,0.051],h:[0,3],w:0.4,_mult:1,
+     crownType:'round',blobSpreadX:2.50,blobSpreadY:1.00,blobYBias:-0.30,crownNoise:0.90,crownFreq:8.0,lumpMix:0.52,
+     leafShape:'round',edgeSharpness:1.00,leafDensity:0.64,leafScale:1.15,detailRough:0.90,leafCluster:1.00,leafAspect:0.70},
+    {nm:'Castanea', nmRu:'Каштан', ry:0.8,r:[4,6.5],col:[0.041,0.105,0.030],h:[4,18],w:0.5,_mult:1,
+     crownType:'columnar',blobSpreadX:1.85,blobSpreadY:1.80,blobYBias:-0.60,crownNoise:0.48,crownFreq:1.1,lumpMix:0.00,
+     leafShape:'serrated',edgeSharpness:0.55,leafDensity:0.57,leafScale:0.65,detailRough:0.90,leafCluster:0.70,leafAspect:0.65},
+],
+};
+
+const uSeed=(Math.random()*500).toFixed(1);
+if(C.DEBUG) console.log(`[lnd] uSeed: ${uSeed}`);
+
+const PRESET_NAMES=Object.keys(C.PRESETS);
+if(C.DEBUG) console.log('[lnd] start | THREE r'+THREE.REVISION+' | species:'+C.SPECIES.length);
+
+const bgEl=document.querySelector('.landscape__bg');
+const _isMobile=window.matchMedia("(max-width: 767px)").matches||bgEl.offsetWidth<768;
+if(_isMobile) C.CHUNK_W=C.CHUNK_W_MOBILE;
+
+const _treeZone=Object.assign({},_isMobile?C.TREE_ZONE_MOBILE:C.TREE_ZONE_DESKTOP);
+
+const lerpC=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const clamp=(v,mn,mx)=>Math.max(mn,Math.min(mx,v));
+const cf=(v,d=5)=>v.toFixed(d);
+const linToSrgb=x=>x<=0.0031308?12.92*x:1.055*Math.pow(x,1/2.4)-0.055;
+const srgbToLin=x=>x<=0.04045?x/12.92:Math.pow((x+0.055)/1.055,2.4);
+function linearToHex(rgb){const b=v=>Math.round(clamp(linToSrgb(v),0,1)*255).toString(16).padStart(2,'0');return'#'+b(rgb[0])+b(rgb[1])+b(rgb[2]);}
+function hexToLinear(hex){return[srgbToLin(parseInt(hex.slice(1,3),16)/255),srgbToLin(parseInt(hex.slice(3,5),16)/255),srgbToLin(parseInt(hex.slice(5,7),16)/255)];}
+
+const PROBE_SKIP=15,PROBE_MEASURE=60;
+const PROBE_SETTINGS={aa:false,dpr:1.0,segW:80,segD:60,fpsCap:0,gridStep:14,detail:false,complexCrown:false,minFPS:22};
+let _probeState='skipping',_probeCount=0,_probeT0=0,_detectedPreset='medium';
+let S={...PROBE_SETTINGS},_currentAA=false;
+let _adaptiveTimer=0,_adaptiveLowCount=0,_adaptiveEnabled=false;
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(C.FOV,innerWidth/innerHeight,0.5,C.FAR_PLANE);
+camera.position.set(0,C.HEIGHT,55);
+camera.rotation.x=C.PITCH;
+scene.add(camera);
+
+let renderer;
+function createRenderer(aa){
+  if(renderer){renderer.dispose();bgEl.querySelector('canvas')?.remove();}
+  renderer=new THREE.WebGLRenderer({antialias:aa});
+  _currentAA=aa;
+  renderer.setPixelRatio(S.dpr);
+  renderer.setSize(innerWidth,innerHeight);
+  bgEl.appendChild(renderer.domElement);
+}
+createRenderer(S.aa);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+const U={
+  sunDir:{value:new THREE.Vector3(1,0.1,0)},
+  sunC:{value:new THREE.Vector3(...C.C_SUN_NOON)},
+  sunS:{value:0.0},
+  ambient:{value:C.AMBIENT_NIGHT},
+  fog:{value:new THREE.Vector3(...C.C_SKY_NIGHT_H)},
+  wind:{value:new THREE.Vector3()},
+  windPhase:{value:0.0},
+};
+
+const skyMat=new THREE.ShaderMaterial({
+  side:THREE.BackSide,
+  uniforms:{uZen:{value:new THREE.Vector3(...C.C_SKY_NIGHT_Z)},uHrz:{value:new THREE.Vector3(...C.C_SKY_NIGHT_H)},uSunDir:U.sunDir,uSunC:U.sunC,uSunPow:{value:0.0},uDusk:{value:0.0}},
+  vertexShader:`varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`
+    varying vec3 vDir;uniform vec3 uZen,uHrz,uSunDir,uSunC;uniform float uSunPow,uDusk;
+    void main(){
+      vec3 d=normalize(vDir);float t=smoothstep(-0.08,0.62,d.y);vec3 c=mix(uHrz,uZen,t);
+      vec3 sunH=normalize(vec3(uSunDir.x,0.,uSunDir.z));float side=dot(normalize(vec3(d.x,0.,d.z)),sunH);
+      float hband=pow(max(0.,1.-abs(d.y)/0.30),2.6);
+      c=mix(c,uSunC*1.2,hband*uDusk*smoothstep(0.2,1.,side)*0.80);c=mix(c,vec3(0.09,0.03,0.14),uDusk*(1.-t)*0.42);
+      if(uSunPow>0.001){float sc=dot(d,normalize(uSunDir));c+=uSunC*uSunPow*(smoothstep(0.9993,1.,sc)*4.+pow(max(0.,sc),40.)*0.14);}
+      gl_FragColor=vec4(c,1.);}`,
+});
+const skyDome=new THREE.Mesh(new THREE.SphereGeometry(480,24,12),skyMat);
+scene.add(skyDome);
+
+{
+  const pos=[];
+  for(let i=0;i<C.STARS;i++){const th=Math.random()*6.2832,ph=Math.acos(1-Math.random()*0.93),R=460+Math.random()*80;pos.push(R*Math.sin(ph)*Math.cos(th),Math.abs(R*Math.cos(ph))+20,R*Math.sin(ph)*Math.sin(th));}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  window._lndStarMat=new THREE.PointsMaterial({color:0xddeeff,size:C.STAR_SZ,sizeAttenuation:false,transparent:true,opacity:0.0});
+  camera.add(new THREE.Points(g,_lndStarMat));
+}
+
+function _h2(px,py){const rx=Math.sin(px*127.1+py*311.7)*43758.5453,ry=Math.sin(px*269.5+py*183.3)*43758.5453;return[-1+2*(rx-Math.floor(rx)),-1+2*(ry-Math.floor(ry))];}
+function _vn(px,py){
+  const ix=Math.floor(px),iy=Math.floor(py),fx=px-ix,fy=py-iy,ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);
+  const[g00x,g00y]=_h2(ix,iy),[g10x,g10y]=_h2(ix+1,iy),[g01x,g01y]=_h2(ix,iy+1),[g11x,g11y]=_h2(ix+1,iy+1);
+  return(1-uy)*((1-ux)*(g00x*fx+g00y*fy)+ux*(g10x*(fx-1)+g10y*fy))+uy*((1-ux)*(g01x*fx+g01y*(fy-1))+ux*(g11x*(fx-1)+g11y*(fy-1)));
+}
+function _fbm(px,py,oct,lac,rgh){let v=0,a=0.5,fr=1;for(let i=0;i<oct;i++){v+=a*_vn(px*fr,py*fr);fr*=lac;a*=rgh;}return v;}
+function _stp(mn,mx,x){const t=Math.max(0,Math.min(1,(x-mn)/(mx-mn)));return t*t*(3-2*t);}
+function _lakeVal(wx,wz){return _fbm(wx*C.LAKE_F,wz*C.LAKE_F,3,2.0,0.6);}
+function _forestVal(wx,wz){return _fbm(wx*C.TREE_FOREST_F,wz*C.TREE_FOREST_F,4,2.0,0.55);}
+function _seededRand(seed){
+  let s=seed|0;s=((s^61)^(s>>>16))|0;s=Math.imul(s,9)|0;s=(s^(s>>>4))|0;s=Math.imul(s,0x27d4eb2d)|0;s=(s^(s>>>15))|0;if(!s)s=1;
+  return()=>{s=(Math.imul(s,1664525)+1013904223)|0;return(s>>>0)/4294967296;};
+}
+function _pickSpecies(noise01,height){
+  const el=C.SPECIES.filter(s=>height>=s.h[0]&&height<=s.h[1]&&s._mult>0);
+  if(!el.length)return null;
+  const tw=el.reduce((s,sp)=>s+sp.w*sp._mult,0);if(!tw)return null;
+  let p=noise01*tw;for(const sp of el){p-=sp.w*sp._mult;if(p<=0)return sp;}return el[el.length-1];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЭТАП 1: ГЕОМЕТРИИ КРОН
+//  _geoGPUCrown — высокая детализация (complexCrown:true)
+//  _geoSimple   — низкая детализация
+// ══════════════════════════════════════════════════════════════════════
+const _geoGPUCrown=new THREE.IcosahedronGeometry(1,3);
+const _geoSimple  =new THREE.IcosahedronGeometry(0.88,1);
+if(C.DEBUG) console.log('[lnd:E1] geoGPU:',_geoGPUCrown.attributes.position.count+'v | geoSimple:',_geoSimple.attributes.position.count+'v');
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЭТАП 2: ЕДИНЫЙ МАТЕРИАЛ КРОНЫ
+//
+//  Форма кроны — Worley + FBM (doc4-подход), все параметры вида
+//  передаются как instance-атрибуты vec4, а не как uniforms.
+//  Это позволяет использовать один материал на все виды.
+//
+//  Instance-атрибуты (4 × vec4 = 16 float на дерево):
+//    aP0: .rgb = цвет,  .w = crownType (0-3)
+//    aP1: .x = blobSpreadX, .y = blobSpreadY, .z = blobYBias, .w = crownNoise
+//    aP2: .x = crownFreq,   .y = lumpMix,     .z = leafShape, .w = leafDensity
+//    aP3: .x = edgeSh,      .y = leafScale,   .z = detailRough, .w = leafAspect
+//
+//  uLeafDetail: 0 = Lambert без листовой текстуры (medium/low/ultralow)
+//               1 = полная листовая текстура (high/ultra/extreme)
+// ══════════════════════════════════════════════════════════════════════
+const CTM={round:0,spreading:1,columnar:2,oval:3};
+const LSH={round:0,lobed:1,pinnate:2,serrated:3};
+
+const _VS_CROWN=`
+  uniform vec3  uWindVec;
+  uniform float uWindPhase;
+  attribute vec4 aP0; // rgb=цвет, w=crownType
+  attribute vec4 aP1; // x=bsx, y=bsy, z=yBias, w=cNoise
+  attribute vec4 aP2; // x=cFreq, y=lumpMix, z=leafShape, w=leafDensity
+  attribute vec4 aP3; // x=edgeSh, y=leafScale, z=detailRough, w=leafAspect
+  varying vec3  vWP,vCol;
+  varying float vFD;
+  varying vec4  vP2,vP3;
+
+  // 3D Worley
+  vec3 _wfp(vec3 p){return fract(sin(vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))))*43758.5453);}
+  float _worley(vec3 p){
+    vec3 i=floor(p);float md=8.;
+    for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
+      vec3 nb=i+vec3(float(x),float(y),float(z));float d=length(_wfp(nb)+nb-p);if(d<md)md=d;
+    }
+    return md;
+  }
+  // 3D Perlin FBM
+  vec3 _gh(vec3 p){vec3 h=fract(sin(vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))))*43758.5453)*2.-1.;return normalize(h);}
+  float _pn(vec3 p){vec3 i=floor(p),f=fract(p),u=f*f*f*(f*(6.*f-15.)+10.);return mix(mix(mix(dot(_gh(i),f),dot(_gh(i+vec3(1,0,0)),f-vec3(1,0,0)),u.x),mix(dot(_gh(i+vec3(0,1,0)),f-vec3(0,1,0)),dot(_gh(i+vec3(1,1,0)),f-vec3(1,1,0)),u.x),u.y),mix(mix(dot(_gh(i+vec3(0,0,1)),f-vec3(0,0,1)),dot(_gh(i+vec3(1,0,1)),f-vec3(1,0,1)),u.x),mix(dot(_gh(i+vec3(0,1,1)),f-vec3(0,1,1)),dot(_gh(i+vec3(1,1,1)),f-vec3(1,1,1)),u.x),u.y),u.z);}
+  float _fbm3(vec3 p){float v=0.,a=.5;v+=a*_pn(p);a*=.5;v+=a*_pn(p*2.);a*=.5;v+=a*_pn(p*4.);return v;}
+
+  void main(){
+    vCol=aP0.rgb*(0.78+0.22*max(0.,normalize(position).y));
+    vP2=aP2; vP3=aP3;
+
+    vec3 d=normalize(position);
+    float bsx=aP1.x,bsy=aP1.y,yBias=aP1.z,cNoise=aP1.w;
+    float cFreq=aP2.x,lumpMix=aP2.y,crownType=aP0.w;
+
+    // noise семплируем с y-bias (не растягивает форму, только смещает центр)
+    vec3 nd=normalize(vec3(d.x,d.y+yBias*0.5,d.z));
+    float w=1.0-clamp(_worley(nd*cFreq)/0.85,0.,1.);
+    float n=_fbm3(nd*cFreq*1.5)*0.5+0.5;
+    float bump=mix(w,n,lumpMix);
+
+    // базовый envelope по crownType
+    float horiz=length(vec2(d.x,d.z));
+    float baseR=1.0;
+    if(crownType<0.5)      baseR=1.0;
+    else if(crownType<1.5) baseR=1.0+horiz*0.25-max(0.,-d.y)*0.35;
+    else if(crownType<2.5) baseR=max(1.0-horiz*0.55+abs(d.y)*0.05,0.15);
+    else                   baseR=1.0+d.y*0.30;
+
+    float t=max(baseR+bump*cNoise,0.05);
+    // blobSpreadX/Y применяем к выходной геометрии — реальное растяжение формы
+    vec3 disp=vec3(d.x*bsx,d.y*bsy,d.z*bsx)*t;
+
+    vec4 wp;
+    #ifdef USE_INSTANCING
+      wp=modelMatrix*instanceMatrix*vec4(disp,1.);
+    #else
+      wp=modelMatrix*vec4(disp,1.);
+    #endif
+    vWP=wp.xyz;
+
+    // ветер по высоте кроны
+    float hf=smoothstep(-0.5,1.0,disp.y);
+    #ifdef USE_INSTANCING
+      float ix=instanceMatrix[3][0]; float iz=instanceMatrix[3][2];
+    #else
+      float ix=wp.x; float iz=wp.z;
+    #endif
+    float lp=uWindPhase+ix*0.10+iz*0.15;
+    float sw=sin(lp)*0.70+sin(lp*2.3+0.8)*0.30;
+    wp.xyz+=uWindVec*sw*hf;
+
+    vec4 mv=viewMatrix*wp;
+    vFD=-mv.z;
+    gl_Position=projectionMatrix*mv;
+  }
+`;
+
+const _FS_CROWN=`
+  varying vec3  vWP,vCol;
+  varying float vFD;
+  varying vec4  vP2; // x=cFreq, y=lumpMix, z=leafShape, w=leafDensity
+  varying vec4  vP3; // x=edgeSh, y=leafScale, z=detailRough, w=leafAspect
+  uniform vec3  uSunDir,uSunC,uFog;
+  uniform float uSunS,uAmbient,uFogN,uFogF;
+  uniform float uLeafDetail; // 0=Lambert, 1=leaf texture
+
+  vec2 lh2(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.0+2.0*fract(sin(p)*43758.5453);}
+  float lnoise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);return mix(mix(dot(lh2(i),f),dot(lh2(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(lh2(i+vec2(0,1)),f-vec2(0,1)),dot(lh2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}
+  // detailRough передаётся параметром — нет доступа к uniform, читаем из varying
+  float lfbm(vec2 p,float r){float v=0.,a=0.5,fr=1.;v+=a*lnoise(p*fr);fr*=2.;a*=r;v+=a*lnoise(p*fr);fr*=2.;a*=r;v+=a*lnoise(p*fr);fr*=2.;a*=r;v+=a*lnoise(p*fr);return v;}
+  float lvoro(vec2 p){vec2 i=floor(p),f=fract(p);float md=1.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 nb=vec2(float(x),float(y)),pt=lh2(i+nb)*0.5+0.5;md=min(md,length(nb+pt-f));}return md;}
+
+  void main(){
+    vec3 dx=dFdx(vWP),dy=dFdy(vWP);
+    vec3 N=normalize(cross(dx,dy));if(N.y<0.)N=-N;
+    float NdL=max(0.,dot(N,uSunDir));
+    vec3 lit=vec3(uAmbient)+uSunC*uSunS*NdL;
+
+    if(uLeafDetail<0.5){
+      // упрощённый Lambert — без листовой текстуры
+      vec3 col=vCol*max(lit,vec3(0.02));col=col/(col+vec3(1.));
+      float fog=smoothstep(uFogN,uFogF,vFD);col=mix(col,uFog,fog);
+      gl_FragColor=vec4(col,1.0);return;
+    }
+
+    float leafShape=vP2.z,leafDensity=vP2.w;
+    float edgeSh=vP3.x,leafScale=vP3.y,dr=vP3.z,leafAspect=vP3.w;
+
+    vec2 uv=vWP.xz*leafScale*2.0;
+    uv=vec2(uv.x*leafAspect,uv.y/leafAspect);
+    float lp=0.0;
+    if(leafShape<0.5){
+      lp=lvoro(uv*1.5)*0.5+lfbm(uv*5.0,dr)*0.5;
+    }else if(leafShape<1.5){
+      vec2 uvD=uv+vec2(lfbm(uv*2.0,dr)*0.3,lfbm(uv*2.3+vec2(10.),dr)*0.3);
+      lp=lvoro(uvD*1.2)*0.4+lfbm(uv*4.0,dr)*0.4+sin(atan(uv.y,uv.x)*5.)*0.03+0.2;
+    }else if(leafShape<2.5){
+      vec2 uvP=vec2(uv.x*0.5,uv.y*2.);
+      lp=lvoro(uvP*1.8)*0.35+lfbm(uvP*6.0,dr)*0.45+abs(sin(uv.x*15.))*0.06+0.14;
+    }else{
+      lp=lvoro(uv*2.2)*0.4+lfbm(uv*6.0,dr)*0.4+lfbm(uv*12.,0.5)*0.12+0.2;
+    }
+    float thr=1.0-leafDensity,ew=mix(0.20,0.04,edgeSh);
+    if(smoothstep(thr+ew,thr-ew,lp)<0.2)discard;
+
+    vec3 col=vCol*max(lit,vec3(0.02));col=col/(col+vec3(1.));
+    float fog=smoothstep(uFogN,uFogF,vFD);col=mix(col,uFog,fog);
+    gl_FragColor=vec4(col,1.0);
+  }
+`;
+
+const crownMat=new THREE.ShaderMaterial({
+  uniforms:{
+    uSunDir:U.sunDir,uSunC:U.sunC,uSunS:U.sunS,uAmbient:U.ambient,uFog:U.fog,
+    uFogN:{value:C.FOG_N},uFogF:{value:C.FOG_F},
+    uWindVec:U.wind,uWindPhase:U.windPhase,
+    uLeafDetail:{value:0.0},
+  },
+  vertexShader:_VS_CROWN,fragmentShader:_FS_CROWN,
+  side:THREE.DoubleSide,alphaTest:0.2,extensions:{derivatives:true},
+});
+if(C.DEBUG) console.log('[lnd:E2] single crownMat OK');
+
+window._lndExportCrown=()=>{
+  const out=C.SPECIES.map(sp=>({
+    nm:sp.nm,nmRu:sp.nmRu,crownType:sp.crownType,
+    blobSpreadX:sp.blobSpreadX??1,blobSpreadY:sp.blobSpreadY??1,blobYBias:sp.blobYBias??0,
+    crownNoise:sp.crownNoise,crownFreq:sp.crownFreq,lumpMix:sp.lumpMix??0.25,
+    leafShape:sp.leafShape,edgeSharpness:sp.edgeSharpness,leafDensity:sp.leafDensity,
+    leafScale:sp.leafScale,detailRough:sp.detailRough,leafAspect:sp.leafAspect??1,
+  }));
+  console.log(JSON.stringify(out,null,2));return out;
+};
+
+let _currentPresetName='';
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЛАНДШАФТ
+// ══════════════════════════════════════════════════════════════════════
+const WL=C.WATER_LEVEL;
+const GLSL_NOISE=`
+vec2 h2(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.+2.*fract(sin(p)*43758.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p,int o,float lac,float rgh){float v=0.,a=.5,fr=1.;for(int i=0;i<10;i++){if(i>=o)break;v+=a*vn(p*fr);fr*=lac;a*=rgh;}return v;}
+`;
+const GLSL_TH=`
+float tH(vec2 xz){
+  xz+=${uSeed};
+  float base=fbm(xz*${cf(C.BASE_F)},${C.BASE_O},${cf(C.BASE_L,3)},${cf(C.BASE_R,3)})*${cf(C.BASE_A,1)};
+  float hill=fbm(xz*${cf(C.HILL_F)},${C.HILL_O},${cf(C.HILL_L,3)},${cf(C.HILL_R,3)})*${cf(C.HILL_A,1)};
+  float mr=fbm(xz*${cf(C.MTN_F)},${C.MTN_O},${cf(C.MTN_L,3)},${cf(C.MTN_R,3)});
+  float mm=smoothstep(${cf(C.MTN_T,3)},${cf(C.MTN_T+.32,3)},mr);
+  float lk=fbm(xz*${cf(C.LAKE_F)},3,2.0,0.6);
+  float lm=smoothstep(${cf(C.LAKE_T+C.LAKE_S,3)},${cf(C.LAKE_T,3)},lk);
+  float h=base+hill+mm*mr*${cf(C.MTN_A,1)};
+  h=mix(h,min(h,${cf(C.LAKE_D,1)}),lm*0.92);
+  return h+${cf(C.TERRAIN_LIFT,2)};
+}
+`;
+const terrVert=GLSL_NOISE+GLSL_TH+`
+varying float vH;varying float vFD;varying vec3 vWP;
+void main(){vec4 wp=modelMatrix*vec4(position,1.);float h=tH(wp.xz);wp.y=h;vH=h;vWP=wp.xyz;vec4 mv=viewMatrix*wp;vFD=-mv.z;gl_Position=projectionMatrix*mv;}`;
+const terrFrag=`
+varying float vH;varying float vFD;varying vec3 vWP;
+uniform vec3 uFog,uSunDir,uSunC;uniform float uSunS,uAmbient;
+uniform vec3 uC_DEEPW,uC_WATER,uC_SHORE,uC_GR1,uC_GR2,uC_RK1,uC_RK2,uC_MTN,uC_PEAK,uC_SNOW;
+void main(){
+  float eh=vH-(${cf(WL,1)});vec3 c;
+  if(eh<-4.5)c=mix(uC_DEEPW,uC_WATER,smoothstep(-5.5,-4.5,eh));
+  else if(eh<-1.5)c=mix(uC_WATER,uC_SHORE,smoothstep(-4.5,-1.5,eh));
+  else if(eh<3.0)c=mix(uC_SHORE,uC_GR1,smoothstep(-1.5,3.0,eh));
+  else if(eh<9.5)c=mix(uC_GR1,uC_GR2,smoothstep(3.0,9.5,eh));
+  else if(eh<18.0)c=mix(uC_GR2,uC_RK1,smoothstep(9.5,18.0,eh));
+  else if(eh<28.0)c=mix(uC_RK1,uC_RK2,smoothstep(18.0,28.0,eh));
+  else if(eh<38.0)c=mix(uC_RK2,uC_MTN,smoothstep(28.0,38.0,eh));
+  else if(eh<46.0)c=mix(uC_MTN,uC_PEAK,smoothstep(38.0,46.0,eh));
+  else c=mix(uC_PEAK,uC_SNOW,smoothstep(46.0,52.0,eh));
+  vec3 dx=dFdx(vWP),dy=dFdy(vWP);vec3 N=normalize(cross(dx,dy));if(N.y<0.)N=-N;
+  float NdS=max(0.,dot(N,uSunDir));
+  vec3 lit=vec3(uAmbient)+uSunS*NdS*uSunC;lit-=(1.-N.y)*0.09;
+  c*=max(lit,vec3(0.02));c=c/(c+vec3(1.));
+  float fog=smoothstep(${cf(C.FOG_N,1)},${cf(C.FOG_F,1)},vFD);
+  c=mix(c,uFog+vec3(0.,.005,.014)*fog,fog);gl_FragColor=vec4(c,1.);}`;
+const tMat=new THREE.ShaderMaterial({
+  uniforms:{
+    uFog:U.fog,uSunDir:U.sunDir,uSunC:U.sunC,uSunS:U.sunS,uAmbient:U.ambient,
+    uC_DEEPW:{value:new THREE.Vector3(...C.C_DEEPW)},uC_WATER:{value:new THREE.Vector3(...C.C_WATER)},
+    uC_SHORE:{value:new THREE.Vector3(...C.C_SHORE)},uC_GR1:{value:new THREE.Vector3(...C.C_GR1)},
+    uC_GR2:{value:new THREE.Vector3(...C.C_GR2)},uC_RK1:{value:new THREE.Vector3(...C.C_RK1)},
+    uC_RK2:{value:new THREE.Vector3(...C.C_RK2)},uC_MTN:{value:new THREE.Vector3(...C.C_MTN)},
+    uC_PEAK:{value:new THREE.Vector3(...C.C_PEAK)},uC_SNOW:{value:new THREE.Vector3(...C.C_SNOW)},
+  },
+  vertexShader:terrVert,fragmentShader:terrFrag,extensions:{derivatives:true},
+});
+
+function makeGeo(segW,segD){const g=new THREE.PlaneGeometry(C.CHUNK_W,C.CHUNK_D,segW,segD);g.rotateX(-Math.PI/2);return g;}
+let currentGeo=makeGeo(S.segW,S.segD);
+const TOTAL=C.CHUNKS*C.CHUNK_D;
+const chunks=Array.from({length:C.CHUNKS},(_,i)=>{const m=new THREE.Mesh(currentGeo,tMat);m.position.z=-i*C.CHUNK_D;scene.add(m);return m;});
+function applyGeo(segW,segD){const ng=makeGeo(segW,segD);currentGeo.dispose();currentGeo=ng;for(const ch of chunks)ch.geometry=currentGeo;}
+
+const HM_RES_X=128,HM_RES_Z=64;
+const _hmRT=new THREE.WebGLRenderTarget(HM_RES_X,HM_RES_Z,{type:THREE.FloatType,format:THREE.RGBAFormat,depthBuffer:false,stencilBuffer:false,minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+const _hmBakeMat=new THREE.ShaderMaterial({
+  uniforms:{uMin:{value:new THREE.Vector2()},uMax:{value:new THREE.Vector2()}},
+  vertexShader:`varying vec2 vUV;void main(){vUV=uv;gl_Position=vec4(position.xy,0.,1.);}`,
+  fragmentShader:GLSL_NOISE+GLSL_TH+`uniform vec2 uMin,uMax;varying vec2 vUV;void main(){vec2 wxz=mix(uMin,uMax,vUV);gl_FragColor=vec4(tH(wxz),0.,0.,1.);}`,
+});
+const _hmScene=new THREE.Scene(),_hmCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+_hmScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),_hmBakeMat));
+const _hmBuffer=new Float32Array(HM_RES_X*HM_RES_Z*4);
+
+function _bakeHeightmap(worldZBase){
+  _hmBakeMat.uniforms.uMin.value.set(-C.CHUNK_W*0.5,worldZBase-C.CHUNK_D);
+  _hmBakeMat.uniforms.uMax.value.set(C.CHUNK_W*0.5,worldZBase);
+  renderer.setRenderTarget(_hmRT);renderer.render(_hmScene,_hmCam);
+  renderer.readRenderTargetPixels(_hmRT,0,0,HM_RES_X,HM_RES_Z,_hmBuffer);
+  renderer.setRenderTarget(null);
+}
+function _sampleHM(lx,lz){
+  const u=clamp((lx+C.CHUNK_W*0.5)/C.CHUNK_W,0,1),v=clamp(1.0+lz/C.CHUNK_D,0,1);
+  const fx=u*HM_RES_X-0.5,fy=v*HM_RES_Z-0.5;
+  const x0=clamp(Math.floor(fx),0,HM_RES_X-1),x1=clamp(Math.floor(fx)+1,0,HM_RES_X-1);
+  const y0=clamp(Math.floor(fy),0,HM_RES_Z-1),y1=clamp(Math.floor(fy)+1,0,HM_RES_Z-1);
+  const tx=fx-Math.floor(fx),ty=fy-Math.floor(fy);
+  const h00=_hmBuffer[(y0*HM_RES_X+x0)*4],h10=_hmBuffer[(y0*HM_RES_X+x1)*4];
+  const h01=_hmBuffer[(y1*HM_RES_X+x0)*4],h11=_hmBuffer[(y1*HM_RES_X+x1)*4];
+  return h00*(1-tx)*(1-ty)+h10*tx*(1-ty)+h01*(1-tx)*ty+h11*tx*ty;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ЭТАП 3: INSTANCED TREES — 2 МЕША
+//
+//  _patchMeshes[pi] — один InstancedMesh на патч.
+//  Все 10 видов хранятся вместе, вид закодирован в instance-атрибутах.
+//  Геометрия каждого меша:
+//    - vertex-атрибуты (position/normal/index) — общая ссылка на _geoSimple/_geoGPUCrown
+//    - instanced-атрибуты (aP0..aP3) — уникальные Float32Array на патч
+//
+//  Draw calls: 20 → 2 (×10 уменьшение)
+// ══════════════════════════════════════════════════════════════════════
+const TREE_CHUNKS=2,TREE_TOTAL=TREE_CHUNKS*C.CHUNK_D;
+// MAX_PATCH_TOTAL — верхний предел деревьев на один патч.
+// 4000 безопасно даже при TREE_GRID_STEP=6 (минимум в панели).
+const MAX_PATCH_TOTAL=4000;
+
+const _dummy=new THREE.Object3D();
+let _patchQueue=[];
+
+// Создаём геометрию патча: vertex-атрибуты берём из baseGeo по ссылке,
+// instanced-атрибуты добавляем уникальные.
+function _makePatchGeo(baseGeo){
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',baseGeo.attributes.position);
+  g.setAttribute('normal',baseGeo.attributes.normal);
+  if(baseGeo.attributes.uv) g.setAttribute('uv',baseGeo.attributes.uv);
+  if(baseGeo.index) g.setIndex(baseGeo.index);
+  return g;
+}
+
+const _patchZ=Array.from({length:TREE_CHUNKS},(_,i)=>-i*C.CHUNK_D);
+
+const _patchMeshes=Array.from({length:TREE_CHUNKS},(_,pi)=>{
+  const geo=_makePatchGeo(_geoSimple);
+  const n=MAX_PATCH_TOTAL;
+  const ap0=new Float32Array(n*4),ap1=new Float32Array(n*4);
+  const ap2=new Float32Array(n*4),ap3=new Float32Array(n*4);
+  geo.setAttribute('aP0',new THREE.InstancedBufferAttribute(ap0,4));
+  geo.setAttribute('aP1',new THREE.InstancedBufferAttribute(ap1,4));
+  geo.setAttribute('aP2',new THREE.InstancedBufferAttribute(ap2,4));
+  geo.setAttribute('aP3',new THREE.InstancedBufferAttribute(ap3,4));
+  const m=new THREE.InstancedMesh(geo,crownMat,n);
+  m.frustumCulled=false;
+  m.count=0;
+  m.position.z=_patchZ[pi];
+  // Храним ссылки на буферы для быстрого доступа в _generatePatch
+  m._ap0=ap0;m._ap1=ap1;m._ap2=ap2;m._ap3=ap3;
+  scene.add(m);
+  return m;
+});
+
+if(C.DEBUG) console.log('[lnd:E3] patchMeshes:'+TREE_CHUNKS+' MAX_PATCH_TOTAL:'+MAX_PATCH_TOTAL+' draw calls: '+TREE_CHUNKS);
+
+function _enqueuePatch(pi,worldZBase){
+  _patchQueue=_patchQueue.filter(e=>e.pi!==pi);
+  _patchQueue.push({pi,worldZBase});
+}
+function _processQueue(){
+  if(!_patchQueue.length)return;
+  const{pi,worldZBase}=_patchQueue.shift();
+  _bakeHeightmap(worldZBase);
+  _generatePatch(pi,worldZBase);
+}
+
+function _generatePatch(pi,worldZBase){
+  const m=_patchMeshes[pi];
+  const ap0=m._ap0,ap1=m._ap1,ap2=m._ap2,ap3=m._ap3;
+  const H_MIN=Math.max(C.TREE_H_MIN,C.WATER_LEVEL);
+  const STEP=C.TREE_GRID_STEP;
+  let idx=0;
+  const counts=new Int32Array(C.SPECIES.length);
+
+  outer:
+  for(let gx=-_treeZone.left+STEP*0.5;gx<_treeZone.right;gx+=STEP){
+    for(let gz=-C.CHUNK_D+STEP*0.5;gz<0;gz+=STEP){
+      if(idx>=MAX_PATCH_TOTAL) break outer;
+      const wx=gx,wz=worldZBase+gz;
+      if(_forestVal(wx,wz)<C.TREE_FOREST_THR) continue;
+      if(_stp(C.LAKE_T+C.LAKE_S,C.LAKE_T,_lakeVal(wx,wz))>0.08) continue;
+      const dn=(_fbm(wx*C.TREE_DENSITY_FREQ,wz*C.TREE_DENSITY_FREQ,3,2.0,0.5)+1)*0.5;
+      if(dn<C.TREE_DENSITY_THR) continue;
+      const cellSeed=((Math.round(gx)*374761|0)+(Math.round(worldZBase+gz)*668265|0))|0;
+      const rng=_seededRand(cellSeed);
+      const lx=clamp(gx+(rng()-0.5)*STEP*0.85,-_treeZone.left,_treeZone.right-1);
+      const lz=clamp(gz+(rng()-0.5)*STEP*0.85,-C.CHUNK_D+1,-1);
+      const h=_sampleHM(lx,lz);
+      if(h<H_MIN||h>C.TREE_H_MAX) continue;
+      const sp=_pickSpecies(rng(),h);
+      if(!sp) continue;
+
+      const r=(sp.r[0]+rng()*(sp.r[1]-sp.r[0]))*C.TREE_SCALE;
+      _dummy.position.set(lx,h+r*sp.ry,lz);
+      _dummy.scale.set(r,r*sp.ry,r);
+      _dummy.rotation.y=rng()*Math.PI*2; // случайный поворот для разнообразия
+      _dummy.updateMatrix();
+      m.setMatrixAt(idx,_dummy.matrix);
+
+      // Упаковываем параметры вида в 4 vec4 атрибута
+      const v=0.80+rng()*0.40,i4=idx*4;
+      counts[C.SPECIES.indexOf(sp)]++;
+      ap0[i4]=sp.col[0]*v; ap0[i4+1]=sp.col[1]*v; ap0[i4+2]=sp.col[2]*v; ap0[i4+3]=CTM[sp.crownType]??0;
+      ap1[i4]=sp.blobSpreadX??1; ap1[i4+1]=sp.blobSpreadY??1; ap1[i4+2]=sp.blobYBias??0; ap1[i4+3]=sp.crownNoise??0.3;
+      ap2[i4]=sp.crownFreq??2.5; ap2[i4+1]=sp.lumpMix??0.25; ap2[i4+2]=LSH[sp.leafShape]??0; ap2[i4+3]=sp.leafDensity??0.75;
+      ap3[i4]=sp.edgeSharpness??0.5; ap3[i4+1]=sp.leafScale??1; ap3[i4+2]=sp.detailRough??0.6; ap3[i4+3]=sp.leafAspect??1;
+      idx++;
+    }
+  }
+
+  m.count=idx;
+  m.instanceMatrix.needsUpdate=true;
+  const g=m.geometry;
+  g.getAttribute('aP0').needsUpdate=true;
+  g.getAttribute('aP1').needsUpdate=true;
+  g.getAttribute('aP2').needsUpdate=true;
+  g.getAttribute('aP3').needsUpdate=true;
+
+  if(C.DEBUG){
+    const dist=Array.from(counts).map((c,i)=>C.SPECIES[i].nm.slice(0,3)+':'+c).join(' ');
+    console.log('[lnd:E3] pi='+pi+' wz='+worldZBase.toFixed(0)+' step='+STEP+' total='+idx+' ['+dist+']');
+  }
+}
+
+for(let pi=0;pi<TREE_CHUNKS;pi++){
+  _bakeHeightmap(_patchZ[pi]);
+  _generatePatch(pi,_patchZ[pi]);
+}
+if(C.DEBUG) console.log('[lnd:E3] init done | trees:'+_patchMeshes.reduce((s,m)=>s+m.count,0));
+
+function _rebuildTrees(){
+  _patchQueue=[];
+  for(let pi=0;pi<TREE_CHUNKS;pi++){_bakeHeightmap(_patchZ[pi]);_generatePatch(pi,_patchZ[pi]);}
+}
+
+// Переключение качества: меняем vertex-атрибуты геометрии (простая/детальная сфера)
+// и флаг листовой текстуры. Instanced-атрибуты (aP0..aP3) остаются нетронутыми.
+function _applyTreeQuality(p){
+  const base=p.complexCrown?_geoGPUCrown:_geoSimple;
+  crownMat.uniforms.uLeafDetail.value=p.detail?1.0:0.0;
+  for(let pi=0;pi<TREE_CHUNKS;pi++){
+    const g=_patchMeshes[pi].geometry;
+    g.setAttribute('position',base.attributes.position);
+    g.setAttribute('normal',base.attributes.normal);
+    if(base.attributes.uv) g.setAttribute('uv',base.attributes.uv);
+    if(base.index) g.setIndex(base.index);
+    g.attributes.position.needsUpdate=true;
+  }
+  if(C.DEBUG) console.log('[lnd:E3] quality → complexCrown:'+p.complexCrown+' leafDetail:'+crownMat.uniforms.uLeafDetail.value);
+}
+
+function applyPreset(name){
+  const p=C.PRESETS[name];if(!p){console.error('[lnd] unknown preset',name);return;}
+  S={...p};
+  if(p.aa!==_currentAA)createRenderer(p.aa);
+  else{renderer.setPixelRatio(p.dpr);renderer.setSize(innerWidth,innerHeight);}
+  applyGeo(p.segW,p.segD);
+  fpsCap_ms=p.fpsCap>0?1000/p.fpsCap:0;
+  _currentPresetName=name;
+  _applyTreeQuality(p);
+  C.TREE_GRID_STEP=p.gridStep;
+  _rebuildTrees();
+  _adaptiveLowCount=0;_adaptiveTimer=0;
+  if(C.DEBUG&&_lndDebug)_lndDebug.syncPreset(name);
+}
+
+function _checkAdaptive(dt){
+  if(!_adaptiveEnabled||_probeState!=='done') return;
+  if(_currentPresetName==='ultralow') return;
+  _adaptiveTimer+=dt;
+  if(_adaptiveTimer<C.ADAPTIVE_INTERVAL) return;
+  _adaptiveTimer=0;
+  const p=C.PRESETS[_currentPresetName];
+  if(_fpsSmooth<p.minFPS){
+    _adaptiveLowCount++;
+    if(_adaptiveLowCount>=C.ADAPTIVE_LOW_COUNT){
+      const idx=PRESET_NAMES.indexOf(_currentPresetName);
+      if(idx<PRESET_NAMES.length-1){
+        const next=PRESET_NAMES[idx+1];
+        console.warn('[lnd:adaptive] downgrade → '+next);
+        applyPreset(next);
+        if(C.DEBUG&&_lndDebug){_lndDebug.probeEl.textContent=`adaptive ↓ ${next} (fps ${_fpsSmooth.toFixed(0)})`;_lndDebug.probeEl.style.color='rgba(255,120,60,0.90)';}
+      }
+    }
+  }else{_adaptiveLowCount=0;}
+}
+
+const DAY_FRAC=1-C.NIGHT_RATIO;
+const sunDirV=new THREE.Vector3();
+function updateCycle(time){
+  const p=(time%C.DAY_DUR)/C.DAY_DUR;
+  const sunAngle=p<DAY_FRAC?(p/DAY_FRAC)*Math.PI:Math.PI+((p-DAY_FRAC)/C.NIGHT_RATIO)*Math.PI;
+  const sx=Math.cos(sunAngle),sy=Math.sin(sunAngle);
+  sunDirV.set(sx,sy,-0.10).normalize();
+  const duskW=sy>=0?C.DAWN_W:C.DAWN_W*C.DAWN_NIGHT_MULT;
+  const dusk=Math.exp(-(sy*sy)/(duskW*duskW));
+  const isSunrise=sx>0;
+  const horizF=clamp(1-Math.abs(sy)*3.5,0,1)*dusk;
+  const sunCol=lerpC(C.C_SUN_NOON,isSunrise?C.C_SUN_DAWN:C.C_SUN_DUSK,horizF);
+  const T=1/(1+Math.exp(sy*C.CYCLE_SMOOTH));
+  const ambient=C.AMBIENT_NIGHT+(C.AMBIENT_DAY-C.AMBIENT_NIGHT)*(1-T);
+  _lndStarMat.opacity=clamp(T*C.STAR_MAX_OP+dusk*0.16,0,C.STAR_MAX_OP);
+  const dayF=1-T;
+  let skyZ=lerpC(C.C_SKY_NIGHT_Z,C.C_SKY_DAY_Z,dayF);
+  let skyH=lerpC(C.C_SKY_NIGHT_H,C.C_SKY_DAY_H,dayF);
+  const duskSkyH=isSunrise?C.C_SKY_DAWN_H:C.C_SKY_DUSK_H;
+  const duskSkyZ=isSunrise?C.C_SKY_DAWN_Z:C.C_SKY_DUSK_Z;
+  skyZ=lerpC(skyZ,duskSkyZ,dusk*0.65);skyH=lerpC(skyH,duskSkyH,dusk*0.90);
+  U.sunDir.value.copy(sunDirV);U.sunC.value.set(...sunCol);
+  U.sunS.value=Math.max(0,sy)*C.SUN_S;U.ambient.value=ambient;U.fog.value.set(...skyH);
+  skyMat.uniforms.uZen.value.set(...skyZ);skyMat.uniforms.uHrz.value.set(...skyH);
+  skyMat.uniforms.uSunPow.value=sy>-0.10?clamp((sy+0.10)*5,0,1):0;
+  skyMat.uniforms.uDusk.value=dusk;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  LOOP
+// ══════════════════════════════════════════════════════════════════════
+const clk=new THREE.Clock();
+let t=0.04*C.DAY_DUR,fpsCap_ms=0,lastFrameTime=0;
+let _fpsFrames=0,_fpsPrev=performance.now(),_fpsSmooth=60;
+let _paused=false,_loopActive=false;
+
+function loop(){
+  if(_paused){_loopActive=false;return;}
+  requestAnimationFrame(loop);
+  const now=performance.now();
+
+  if(_probeState!=='done'){
+    _probeCount++;
+    if(_probeState==='skipping'&&_probeCount>=PROBE_SKIP){_probeState='measuring';_probeCount=0;_probeT0=now;}
+    else if(_probeState==='measuring'&&_probeCount>=PROBE_MEASURE){
+      const fps=PROBE_MEASURE/((now-_probeT0)/1000);
+      _probeState='done';_detectedPreset='ultralow';
+      for(const[th,nm]of C.PROBE_THRESHOLDS){if(fps>=th){_detectedPreset=nm;break;}}
+      if(C.DEBUG) console.log('[lnd] probe fps:'+fps.toFixed(1)+' → preset:'+_detectedPreset);
+      applyPreset(_detectedPreset);
+      _adaptiveEnabled=true;_adaptiveTimer=0;_adaptiveLowCount=0;
+      if(C.DEBUG&&_lndDebug){_lndDebug.probeEl.textContent=`probe: ${fps.toFixed(0)} fps → ${_detectedPreset}`;_lndDebug.probeEl.style.color='rgba(214,236,65,0.80)';}
+    }
+  }
+
+  if(fpsCap_ms>0&&now-lastFrameTime<fpsCap_ms)return;
+  lastFrameTime=now;
+
+  _fpsFrames++;
+  if(now-_fpsPrev>=1500){
+    _fpsSmooth=0.7*_fpsSmooth+0.3*(_fpsFrames/((now-_fpsPrev)/1000));
+    if(C.DEBUG&&_lndDebug){
+      const _dbgTrees=_patchMeshes.reduce((s,m)=>s+m.count,0);
+      _lndDebug.fps.textContent=`fps: ${_fpsSmooth.toFixed(0)}`;
+      _lndDebug.tri.textContent=`${(S.segW*S.segD*2*C.CHUNKS/1000).toFixed(0)}k · 🌳${_dbgTrees}`;
+    }
+    _fpsFrames=0;_fpsPrev=now;
+  }
+
+  const dt=Math.min(clk.getDelta(),0.05);t+=dt;
+
+  const _wt=t*C.WIND_SPEED;
+  U.wind.value.set(
+    (Math.sin(_wt*0.40)*0.60+Math.sin(_wt*1.10)*0.25)*C.WIND_STRENGTH,
+    Math.sin(_wt*0.30)*0.08*C.WIND_STRENGTH,
+    (Math.cos(_wt*0.35)*0.50+Math.cos(_wt*0.90)*0.20)*C.WIND_STRENGTH
+  );
+  U.windPhase.value=_wt;
+
+  _checkAdaptive(dt);
+
+  camera.position.z-=C.SPEED*dt;
+  camera.position.y=C.HEIGHT+Math.sin(t*C.BOB_F*Math.PI*2)*C.BOB_A;
+  camera.rotation.z=Math.sin(t*C.SWAY_F*Math.PI*2)*C.SWAY_A;
+  camera.rotation.y=Math.sin(t*C.YAW_F*Math.PI*2)*C.YAW_A;
+  camera.rotation.x=C.PITCH;
+  skyDome.position.copy(camera.position);
+  updateCycle(t);
+
+  for(const ch of chunks)
+    if(ch.position.z-C.CHUNK_D*0.5>camera.position.z-10) ch.position.z-=TOTAL;
+
+  // Рециклинг патчей — меш остаётся на месте (position.z фиксирован для локальных координат),
+  // просто перегенерируем деревья с новыми мировыми координатами
+  for(let pi=0;pi<TREE_CHUNKS;pi++){
+    if(_patchZ[pi]-C.CHUNK_D>camera.position.z-3){
+      _patchZ[pi]-=TREE_TOTAL;
+      _patchMeshes[pi].position.z=_patchZ[pi];
+      _enqueuePatch(pi,_patchZ[pi]);
+    }
+  }
+  _processQueue();
+  renderer.render(scene,camera);
+}
+
+_loopActive=true;
+loop();
+
+if(!C.DEBUG){
+  const btn=document.createElement('button');btn.id='lnd-pause-btn';btn.textContent='❚❚';btn.title='Пауза';
+  document.querySelector('.landscape__content').appendChild(btn);
+  btn.addEventListener('click',()=>{_paused=!_paused;btn.textContent=_paused?'▶':'❚❚';if(!_paused){clk.getDelta();lastFrameTime=0;_loopActive=true;loop();}});
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  DEBUG-ПАНЕЛЬ
+// ══════════════════════════════════════════════════════════════════════
+const POLY_MAP=[{segW:32,segD:24,label:'ultralow'},{segW:50,segD:40,label:'low'},{segW:80,segD:60,label:'medium'},{segW:130,segD:100,label:'high'},{segW:200,segD:150,label:'ultra'},{segW:300,segD:225,label:'extreme'}];
+const BIOME_DEFS=[['uC_DEEPW','Глубокая вода',C.C_DEEPW],['uC_WATER','Вода',C.C_WATER],['uC_SHORE','Берег',C.C_SHORE],['uC_GR1','Трава 1',C.C_GR1],['uC_GR2','Трава 2',C.C_GR2],['uC_RK1','Скала 1',C.C_RK1],['uC_RK2','Скала 2',C.C_RK2],['uC_MTN','Гора',C.C_MTN],['uC_PEAK','Пик',C.C_PEAK],['uC_SNOW','Снег',C.C_SNOW]];
+window._lndDebug=null;
+
+if(C.DEBUG){
+  const PRESET_DEFAULT_IDX=PRESET_NAMES.indexOf('medium');
+  const root=document.querySelector('.landscape');
+  const mkEl=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const mkRow=(label,ctrl,valEl)=>{const r=mkEl('div','landscape__ctrl-row');r.appendChild(mkEl('span','landscape__ctrl-label',label));r.appendChild(ctrl);if(valEl)r.appendChild(valEl);return r;};
+  const mkVal=t=>mkEl('span','landscape__ctrl-val',t);
+  const mkSep=()=>mkEl('hr','landscape__ctrl-sep');
+  const mkToggle=(checked,onChange)=>{const w=mkEl('label','landscape__toggle'),i=mkEl('input');i.type='checkbox';i.checked=checked;i.addEventListener('change',()=>onChange(i.checked));w.appendChild(i);w.appendChild(mkEl('span','lnd-track'));return{wrap:w,inp:i};};
+  const mkRange=(mn,mx,step,val,onInput)=>{const i=mkEl('input');i.type='range';i.className='landscape__range';Object.assign(i,{min:mn,max:mx,step,value:val});i.addEventListener('input',()=>onInput(parseFloat(i.value)));return i;};
+
+  const ctrl=mkEl('details','landscape__ctrl');ctrl.setAttribute('open','');
+  ctrl.appendChild(mkEl('summary',null,'Render settings'));
+  const body=mkEl('div','landscape__ctrl-body');ctrl.appendChild(body);
+
+  const statLine=mkEl('div','landscape__ctrl-probe','');
+  statLine.style.cssText='font-size:10px;min-height:14px;display:flex;justify-content:space-between;gap:6px';
+  const fpsEl=mkEl('span',null,'fps: —');fpsEl.style.color='rgba(255,255,255,0.35)';
+  const triEl=mkEl('span',null,'—');triEl.style.color='rgba(255,255,255,0.35)';
+  const probeEl=mkEl('span',null,'⏳ measuring...');probeEl.style.color='rgba(255,165,0,0.85)';
+  statLine.appendChild(fpsEl);statLine.appendChild(triEl);statLine.appendChild(probeEl);
+  body.appendChild(statLine);body.appendChild(mkSep());
+
+  let aaInp,dprR,dprV,polyR,polyV,fpscR,fpscV,stepR,stepV;
+  const presetV=mkVal(PRESET_NAMES[PRESET_DEFAULT_IDX]||'?');
+  const presetR=mkRange(0,PRESET_NAMES.length-1,1,PRESET_DEFAULT_IDX,idx=>{const name=PRESET_NAMES[idx];presetV.textContent=name;applyPreset(name);_adaptiveEnabled=false;});
+  body.appendChild(mkRow('Пресет',presetR,presetV));body.appendChild(mkSep());
+
+  const gfxSub=mkEl('details','landscape__ctrl-sub');gfxSub.appendChild(mkEl('summary',null,'Графика'));
+  const gfxBody=mkEl('div','landscape__ctrl-sub-body');
+  const tog=mkToggle(S.aa,v=>{S.aa=v;createRenderer(v);});aaInp=tog.inp;gfxBody.appendChild(mkRow('AA (MSAA)',tog.wrap));
+  dprV=mkVal(S.dpr.toFixed(2)+'×');dprR=mkRange(0.5,2.0,0.25,S.dpr,v=>{S.dpr=v;renderer.setPixelRatio(v);renderer.setSize(innerWidth,innerHeight);dprV.textContent=v.toFixed(2)+'×';});gfxBody.appendChild(mkRow('DPR',dprR,dprV));
+  polyV=mkVal('medium');polyR=mkRange(0,POLY_MAP.length-1,1,2,idx=>{const p=POLY_MAP[idx];S.segW=p.segW;S.segD=p.segD;applyGeo(p.segW,p.segD);polyV.textContent=p.label;});gfxBody.appendChild(mkRow('Полигоны',polyR,polyV));
+  fpscV=mkVal('off');fpscR=mkRange(0,60,6,0,v=>{S.fpsCap=v;fpsCap_ms=v>0?1000/v:0;fpscV.textContent=v===0?'off':v+'fps';});gfxBody.appendChild(mkRow('FPS cap',fpscR,fpscV));
+  gfxSub.appendChild(gfxBody);body.appendChild(gfxSub);body.appendChild(mkSep());
+
+  const biomeSub=mkEl('details','landscape__ctrl-sub');biomeSub.appendChild(mkEl('summary',null,'Цвета биомов'));
+  const biomeBody=mkEl('div','landscape__ctrl-sub-body');
+  for(const[uName,label,initLinear]of BIOME_DEFS){const picker=mkEl('input');picker.type='color';picker.className='landscape__color-input';picker.value=linearToHex(initLinear);picker.addEventListener('input',()=>{const[r,g,b]=hexToLinear(picker.value);tMat.uniforms[uName].value.set(r,g,b);});biomeBody.appendChild(mkRow(label,picker));}
+  biomeSub.appendChild(biomeBody);body.appendChild(biomeSub);body.appendChild(mkSep());
+
+  const windSub=mkEl('details','landscape__ctrl-sub');windSub.appendChild(mkEl('summary',null,'Ветер'));
+  const windBody=mkEl('div','landscape__ctrl-sub-body');
+  const wsV=mkVal(C.WIND_STRENGTH.toFixed(2));const wsR=mkRange(0,2.5,0.05,C.WIND_STRENGTH,v=>{C.WIND_STRENGTH=v;wsV.textContent=v.toFixed(2);});windBody.appendChild(mkRow('Сила',wsR,wsV));
+  const wpdV=mkVal(C.WIND_SPEED.toFixed(2));const wpdR=mkRange(0.1,4.0,0.1,C.WIND_SPEED,v=>{C.WIND_SPEED=v;wpdV.textContent=v.toFixed(2);});windBody.appendChild(mkRow('Скорость',wpdR,wpdV));
+  windSub.appendChild(windBody);body.appendChild(windSub);body.appendChild(mkSep());
+
+  let _rebuildTimer=null;
+  function scheduledRebuild(){clearTimeout(_rebuildTimer);_rebuildTimer=setTimeout(()=>_rebuildTrees(),300);}
+
+  const treeSub=mkEl('details','landscape__ctrl-sub');treeSub.appendChild(mkEl('summary',null,'Сетка деревьев'));
+  const treeBody=mkEl('div','landscape__ctrl-sub-body');
+  stepV=mkVal(C.TREE_GRID_STEP);stepR=mkRange(6,25,1,C.TREE_GRID_STEP,v=>{C.TREE_GRID_STEP=v;stepV.textContent=v;scheduledRebuild();});treeBody.appendChild(mkRow('Шаг сетки (↓больше д.)',stepR,stepV));
+  const tsV=mkVal(C.TREE_SCALE.toFixed(2)+'×');const tsR=mkRange(0.2,2.0,0.05,C.TREE_SCALE,v=>{C.TREE_SCALE=v;tsV.textContent=v.toFixed(2)+'×';scheduledRebuild();});treeBody.appendChild(mkRow('Масштаб крон',tsR,tsV));
+  const fthrV=mkVal(C.TREE_FOREST_THR.toFixed(2));const fthrR=mkRange(-0.60,0.20,0.02,C.TREE_FOREST_THR,v=>{C.TREE_FOREST_THR=v;fthrV.textContent=v.toFixed(2);scheduledRebuild();});treeBody.appendChild(mkRow('Покрытие леса',fthrR,fthrV));
+  const hminV=mkVal(C.TREE_H_MIN.toFixed(1));const hminR=mkRange(-2,8,0.5,C.TREE_H_MIN,v=>{C.TREE_H_MIN=v;hminV.textContent=v.toFixed(1);scheduledRebuild();});treeBody.appendChild(mkRow('H мин',hminR,hminV));
+  const hmaxV=mkVal(C.TREE_H_MAX.toFixed(0));const hmaxR=mkRange(5,35,1,C.TREE_H_MAX,v=>{C.TREE_H_MAX=v;hmaxV.textContent=v.toFixed(0);scheduledRebuild();});treeBody.appendChild(mkRow('H макс',hmaxR,hmaxV));
+  const dthrV=mkVal(C.TREE_DENSITY_THR.toFixed(2));const dthrR=mkRange(0,0.6,0.02,C.TREE_DENSITY_THR,v=>{C.TREE_DENSITY_THR=v;dthrV.textContent=v.toFixed(2);scheduledRebuild();});treeBody.appendChild(mkRow('Прореживание (↑кластеры)',dthrR,dthrV));
+  const densityV=mkVal(C.TREE_DENSITY_FREQ);const densityR=mkRange(0.005,0.06,0.005,C.TREE_DENSITY_FREQ,v=>{C.TREE_DENSITY_FREQ=v;densityV.textContent=v;scheduledRebuild();});treeBody.appendChild(mkRow('Густота (↓гуще)',densityR,densityV));
+  treeSub.appendChild(treeBody);body.appendChild(treeSub);body.appendChild(mkSep());
+
+  const zoneSub=mkEl('details','landscape__ctrl-sub');zoneSub.appendChild(mkEl('summary',null,'Зона деревьев ('+((_isMobile)?'mobile':'desktop')+')'));
+  const zoneBody=mkEl('div','landscape__ctrl-sub-body');
+  const zoneHint=mkEl('div');zoneHint.style.cssText='font-size:9px;color:rgba(255,255,255,0.28);line-height:1.5;margin-bottom:2px';zoneHint.textContent='Впиши финальное в C.TREE_ZONE_DESKTOP / MOBILE';zoneBody.appendChild(zoneHint);
+  function _mkZoneRow(label,key,min,max,step){const vEl=mkVal(_treeZone[key]);const r=mkRange(min,max,step,_treeZone[key],v=>{_treeZone[key]=v;vEl.textContent=v;scheduledRebuild();});zoneBody.appendChild(mkRow(label,r,vEl));}
+  _mkZoneRow('← влево','left',0,Math.floor(C.CHUNK_W/2),5);_mkZoneRow('→ вправо','right',0,Math.floor(C.CHUNK_W/2),5);
+  zoneSub.appendChild(zoneBody);body.appendChild(zoneSub);body.appendChild(mkSep());
+
+  const specSub=mkEl('details','landscape__ctrl-sub');specSub.appendChild(mkEl('summary',null,'Виды деревьев'));
+  const specBody=mkEl('div','landscape__ctrl-sub-body');
+  for(const sp of C.SPECIES){
+    const v=mkVal('1.0×');const r=mkRange(0,2.0,0.1,1.0,val=>{sp._mult=val;v.textContent=val.toFixed(1)+'×';scheduledRebuild();});
+    specBody.appendChild(mkRow(sp.nmRu||sp.nm,r,v));
+  }
+  specSub.appendChild(specBody);body.appendChild(specSub);
+  root.appendChild(ctrl);
+
+  _lndDebug={
+    fps:fpsEl,tri:triEl,probeEl,
+    syncPreset(name){
+      const idx=PRESET_NAMES.indexOf(name);const p=C.PRESETS[name];if(!p)return;
+      if(idx>=0){presetR.value=idx;presetV.textContent=name;}
+      aaInp.checked=p.aa;dprR.value=p.dpr;dprV.textContent=p.dpr.toFixed(2)+'×';
+      fpscR.value=p.fpsCap;fpscV.textContent=p.fpsCap===0?'off':p.fpsCap+'fps';
+      const pi=POLY_MAP.findIndex(m=>m.segW===p.segW);if(pi>=0){polyR.value=pi;polyV.textContent=POLY_MAP[pi].label;}
+      stepR.value=p.gridStep;stepV.textContent=p.gridStep;
+    }
+  };
+  if(C.DEBUG) console.log('[lnd] debug panel OK');
+}
+
+if(C.DEBUG) console.log('[lnd] ready | draw calls trees:'+TREE_CHUNKS+' (было 30) | Worley crown | instance attrs');
+</script>
+</div>

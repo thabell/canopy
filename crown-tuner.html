@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crown Tuner</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#080c10;--panel:#0d1219;--border:rgba(255,255,255,.07);--accent:#d6ec41;--text:rgba(255,255,255,.82);--muted:rgba(255,255,255,.38)}
+body{background:var(--bg);color:var(--text);font:11px/1.5 'Courier New',monospace;overflow:hidden;display:flex;height:100vh}
+#canvas-wrap{flex:1;position:relative;min-width:0}
+canvas{display:block;width:100%;height:100%}
+#hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);pointer-events:none;white-space:nowrap}
+#panel{width:310px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#species-tabs{display:flex;flex-wrap:wrap;gap:3px;padding:10px;border-bottom:1px solid var(--border)}
+.sp-tab{padding:3px 7px;border-radius:4px;cursor:pointer;font:10px 'Courier New',monospace;color:var(--muted);background:transparent;border:1px solid transparent;transition:all .12s;white-space:nowrap}
+.sp-tab:hover{color:var(--text);border-color:var(--border)}
+.sp-tab.active{color:#0d1219;background:var(--accent);border-color:var(--accent)}
+#params{flex:1;overflow-y:auto;padding:10px 12px}
+#params::-webkit-scrollbar{width:3px}
+#params::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+.sec{font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin:10px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--border)}
+.sec:first-child{margin-top:0}
+.row{display:flex;align-items:center;gap:6px;min-height:26px}
+.lbl{color:var(--muted);flex:1;font-size:10px;white-space:nowrap}
+.val{color:var(--accent);min-width:44px;text-align:right;font-size:10px;white-space:nowrap}
+input[type=range]{-webkit-appearance:none;width:90px;height:3px;background:rgba(255,255,255,.18);border-radius:2px;outline:none;flex-shrink:0;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;background:var(--accent);border-radius:50%}
+select{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:var(--text);padding:2px 5px;border-radius:3px;font:10px 'Courier New',monospace;cursor:pointer;flex-shrink:0}
+#footer{padding:10px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px}
+.btn{padding:6px 10px;border-radius:5px;border:none;cursor:pointer;font:10px 'Courier New',monospace;letter-spacing:.04em;transition:all .15s}
+.btn-p{background:var(--accent);color:#0d1219}.btn-p:hover{background:#c8de2a}
+.btn-s{background:rgba(255,255,255,.07);color:var(--text);border:1px solid var(--border)}.btn-s:hover{background:rgba(255,255,255,.12)}
+.brow{display:flex;gap:6px}.brow .btn{flex:1}
+textarea{width:100%;height:58px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:4px;color:var(--text);font:9px 'Courier New',monospace;padding:5px;resize:none}
+textarea::placeholder{color:var(--muted)}
+#imp-hint{font-size:9px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="hint">← → смена вида &nbsp;·&nbsp; drag = орбита &nbsp;·&nbsp; scroll = zoom</div>
+</div>
+<div id="panel">
+  <div id="species-tabs"></div>
+  <div id="params"></div>
+  <div id="footer">
+    <div class="brow">
+      <button class="btn btn-p" id="btn-dl">⬇ Скачать JSON</button>
+      <button class="btn btn-s" id="btn-js">⎘ Копировать JS</button>
+    </div>
+    <textarea id="imp-area" placeholder="Вставить JS или JSON конфиг…"></textarea>
+    <div id="imp-hint">Вставь JS/JSON конфиг → «Применить»</div>
+    <button class="btn btn-s" id="btn-imp">Применить конфиг</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const SPECIES=[
+  // crownType: round/spreading/columnar/oval — базовый envelope формы
+  // blobSpreadX — горизонтальное растяжение геометрии, blobSpreadY — вертикальное
+  // blobYBias — смещение центра noise-сэмплирования по Y (комки выше/ниже)
+  // crownFreq — размер ячеек Worley (↓=крупнее), crownNoise — глубина выдавливания
+  // lumpMix — 0=чёткие Worley-комки, 1=плавный FBM-рельеф
+  {nm:'Quercus',nmRu:'Дуб',    ry:0.78,r:[4.5,7.0],col:[0.040,0.115,0.028],h:[3,28],w:0.9,_mult:1,
+   crownType:'spreading',blobSpreadX:1.30,blobSpreadY:0.80,blobYBias:-0.10,crownNoise:0.42,crownFreq:2.0,lumpMix:0.20,
+   leafShape:'lobed',  edgeSharpness:0.70,leafDensity:0.82,leafScale:1.4,detailRough:0.72,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Tilia',nmRu:'Липа',     ry:0.92,r:[3.5,5.5],col:[0.058,0.152,0.047],h:[2,20],w:0.7,_mult:1,
+   crownType:'round',  blobSpreadX:0.95,blobSpreadY:1.05,blobYBias:0.05,crownNoise:0.26,crownFreq:3.0,lumpMix:0.35,
+   leafShape:'round',  edgeSharpness:0.30,leafDensity:0.78,leafScale:1.0,detailRough:0.50,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Fagus',nmRu:'Бук',      ry:0.73,r:[5.0,8.0],col:[0.033,0.092,0.025],h:[4,25],w:0.6,_mult:1,
+   crownType:'round',  blobSpreadX:1.05,blobSpreadY:1.00,blobYBias:0.08,crownNoise:0.22,crownFreq:2.8,lumpMix:0.30,
+   leafShape:'round',  edgeSharpness:0.40,leafDensity:0.88,leafScale:1.1,detailRough:0.45,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Fraxinus',nmRu:'Ясень', ry:1.35,r:[3.0,5.0],col:[0.054,0.138,0.037],h:[3,20],w:0.5,_mult:1,
+   crownType:'oval',   blobSpreadX:0.78,blobSpreadY:1.50,blobYBias:0.12,crownNoise:0.30,crownFreq:3.2,lumpMix:0.25,
+   leafShape:'pinnate',edgeSharpness:0.75,leafDensity:0.58,leafScale:0.8,detailRough:0.65,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Ulmus',nmRu:'Вяз',      ry:1.12,r:[4.0,6.0],col:[0.044,0.122,0.032],h:[2,18],w:0.5,_mult:1,
+   crownType:'spreading',blobSpreadX:1.20,blobSpreadY:0.88,blobYBias:-0.06,crownNoise:0.34,crownFreq:2.5,lumpMix:0.22,
+   leafShape:'serrated',edgeSharpness:0.60,leafDensity:0.72,leafScale:0.95,detailRough:0.58,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Carpinus',nmRu:'Граб',  ry:0.58,r:[3.0,5.0],col:[0.048,0.135,0.039],h:[2,16],w:0.6,_mult:1,
+   crownType:'spreading',blobSpreadX:1.30,blobSpreadY:0.85,blobYBias:-0.18,crownNoise:0.38,crownFreq:4.0,lumpMix:0.15,
+   leafShape:'serrated',edgeSharpness:0.75,leafDensity:0.85,leafScale:0.6,detailRough:0.75,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Alnus',nmRu:'Ольха',    ry:1.55,r:[2.5,4.0],col:[0.028,0.085,0.023],h:[0,5], w:0.7,_mult:1,
+   crownType:'columnar',blobSpreadX:0.52,blobSpreadY:1.80,blobYBias:0.22,crownNoise:0.22,crownFreq:2.8,lumpMix:0.40,
+   leafShape:'round',  edgeSharpness:0.45,leafDensity:0.70,leafScale:0.85,detailRough:0.55,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Juglans',nmRu:'Орех',   ry:0.84,r:[5.0,8.0],col:[0.047,0.110,0.030],h:[3,15],w:0.4,_mult:1,
+   crownType:'spreading',blobSpreadX:1.45,blobSpreadY:0.72,blobYBias:-0.22,crownNoise:0.48,crownFreq:1.8,lumpMix:0.18,
+   leafShape:'pinnate',edgeSharpness:0.65,leafDensity:0.65,leafScale:1.8,detailRough:0.65,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Corylus',nmRu:'Лещина', ry:0.53,r:[2.0,3.5],col:[0.063,0.165,0.051],h:[0,5], w:0.8,_mult:1,
+   crownType:'round',  blobSpreadX:1.10,blobSpreadY:1.10,blobYBias:-0.08,crownNoise:0.32,crownFreq:3.5,lumpMix:0.28,
+   leafShape:'round',  edgeSharpness:0.35,leafDensity:0.80,leafScale:0.7,detailRough:0.60,leafCluster:0.0,leafAspect:1.0},
+  {nm:'Castanea',nmRu:'Каштан',ry:0.80,r:[4.0,6.5],col:[0.041,0.105,0.030],h:[4,18],w:0.5,_mult:1,
+   crownType:'round',  blobSpreadX:1.02,blobSpreadY:1.02,blobYBias:0.02,crownNoise:0.28,crownFreq:2.4,lumpMix:0.25,
+   leafShape:'serrated',edgeSharpness:0.65,leafDensity:0.83,leafScale:1.5,detailRough:0.70,leafCluster:0.0,leafAspect:1.0},
+];
+
+// crownType → float для uniform
+const CTM={round:0,spreading:1,columnar:2,oval:3};
+
+const VS_GPU=`
+  uniform vec3  uWindVec;uniform float uWindPhase;
+  uniform float uCF,uCN,uBSX,uBSY,uYBias,uLumpMix,uCrownType;
+  uniform vec3  uBaseCol;
+  varying vec3  vWP,vCol;varying float vFD;
+
+  // 3D Worley — минимальное расстояние до feature points
+  vec3 _wp(vec3 p){return fract(sin(vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))))*43758.5453);}
+  float worley(vec3 p){
+    vec3 i=floor(p);float md=8.;
+    for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
+      vec3 nb=i+vec3(float(x),float(y),float(z));float d=length(_wp(nb)+nb-p);if(d<md)md=d;
+    }
+    return md;
+  }
+
+  // Gradient 3D Perlin + FBM
+  vec3 _gh(vec3 p){vec3 h=fract(sin(vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))))*43758.5453)*2.-1.;return normalize(h);}
+  float _pn(vec3 p){vec3 i=floor(p),f=fract(p),u=f*f*f*(f*(6.*f-15.)+10.);return mix(mix(mix(dot(_gh(i),f),dot(_gh(i+vec3(1,0,0)),f-vec3(1,0,0)),u.x),mix(dot(_gh(i+vec3(0,1,0)),f-vec3(0,1,0)),dot(_gh(i+vec3(1,1,0)),f-vec3(1,1,0)),u.x),u.y),mix(mix(dot(_gh(i+vec3(0,0,1)),f-vec3(0,0,1)),dot(_gh(i+vec3(1,0,1)),f-vec3(1,0,1)),u.x),mix(dot(_gh(i+vec3(0,1,1)),f-vec3(0,1,1)),dot(_gh(i+vec3(1,1,1)),f-vec3(1,1,1)),u.x),u.y),u.z);}
+  float _fbm(vec3 p){float v=0.,a=.5;v+=a*_pn(p);a*=.5;v+=a*_pn(p*2.);a*=.5;v+=a*_pn(p*4.);return v;}
+
+  void main(){
+    vCol=uBaseCol*(0.78+0.22*max(0.,normalize(position).y));
+    vec3 d=normalize(position);
+
+    // Шум семплируем в изотропном пространстве с вертикальным bias
+    // (только смещает центр — не растягивает форму)
+    vec3 nd=normalize(vec3(d.x, d.y+uYBias*0.5, d.z));
+    float w=1.0-clamp(worley(nd*uCF)/0.85,0.,1.);
+    float n=_fbm(nd*uCF*1.5)*0.5+0.5;
+    float bump=mix(w,n,uLumpMix);
+
+    // crownType: базовый envelope поверх которого выдавливаются комки
+    float horiz=length(vec2(d.x,d.z));
+    float baseR=1.0;
+    if(uCrownType<0.5){                      // round: равномерная сфера
+      baseR=1.0;
+    }else if(uCrownType<1.5){               // spreading: широкая, бока поникают
+      baseR=1.0+horiz*0.25-max(0.,-d.y)*0.35;
+    }else if(uCrownType<2.5){               // columnar: узкая, вытянутая вверх
+      baseR=1.0-horiz*0.55+abs(d.y)*0.05;
+      baseR=max(baseR,0.15);
+    }else{                                   // oval: чуть выше чем широкая
+      baseR=1.0+d.y*0.30;
+    }
+
+    float t=max(baseR+bump*uCN, 0.05);
+
+    // blobSpreadX/Y применяем к ВЫХОДНОЙ геометрии — это реальное растяжение формы
+    vec3 disp=vec3(d.x*uBSX, d.y*uBSY, d.z*uBSX)*t;
+
+    vec4 wp=modelMatrix*vec4(disp,1.);vWP=wp.xyz;
+    float hf=smoothstep(-0.5,1.0,disp.y);
+    float lp=uWindPhase+wp.x*0.10+wp.z*0.15;
+    float sw=sin(lp)*0.70+sin(lp*2.3+0.8)*0.30;
+    wp.xyz+=uWindVec*sw*hf;
+    vec4 mv=viewMatrix*wp;vFD=-mv.z;gl_Position=projectionMatrix*mv;
+  }`;
+const FS_GPU=`
+  varying vec3 vWP,vCol;varying float vFD;
+  uniform vec3 uSunDir,uSunC,uFog;uniform float uSunS,uAmbient,uFogN,uFogF;
+  uniform float uLeafDensity,uLeafScale,uDetailRough,uLeafShape,uEdgeSharpness;
+  uniform float uLeafCluster,uLeafAspect;
+  vec2 lh(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.0+2.0*fract(sin(p)*43758.5453);}
+  float ln(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);return mix(mix(dot(lh(i),f),dot(lh(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(lh(i+vec2(0,1)),f-vec2(0,1)),dot(lh(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}
+  float lfbm(vec2 p){float v=0.,a=0.5,fr=1.;v+=a*ln(p*fr);fr*=2.;a*=uDetailRough;v+=a*ln(p*fr);fr*=2.;a*=uDetailRough;v+=a*ln(p*fr);fr*=2.;a*=uDetailRough;v+=a*ln(p*fr);return v;}
+  float lvoro(vec2 p){vec2 i=floor(p),f=fract(p);float md=1.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 nb=vec2(float(x),float(y)),pt=lh(i+nb)*0.5+0.5;md=min(md,length(nb+pt-f));}return md;}
+  void main(){
+    vec3 dx=dFdx(vWP),dy=dFdy(vWP);vec3 N=normalize(cross(dx,dy));if(N.y<0.)N=-N;
+    // leafAspect вытягивает паттерн по одной оси
+    vec2 uv=vWP.xz*uLeafScale*2.0;
+    uv=vec2(uv.x*uLeafAspect,uv.y/uLeafAspect);
+    // leafCluster: 0=равный mix, 1=voronoi dominant (крупные комки), -1=fbm dominant (мелкий хаос)
+    float vw=0.5+uLeafCluster*0.45, fw=1.0-vw;
+    float lp=0.0;
+    if(uLeafShape<0.5){lp=lvoro(uv*1.5)*vw+lfbm(uv*5.0)*fw;}
+    else if(uLeafShape<1.5){vec2 uvD=uv+vec2(lfbm(uv*2.0)*0.3,lfbm(uv*2.3+vec2(10.0))*0.3);float lobes=sin(atan(uv.y,uv.x)*5.0)*0.03;lp=lvoro(uvD*1.2)*(vw*0.8)+lfbm(uv*4.0)*(fw*0.8)+lobes+0.2;}
+    else if(uLeafShape<2.5){vec2 uvP=vec2(uv.x*0.5,uv.y*2.0);float veins=abs(sin(uv.x*15.0))*0.06;lp=lvoro(uvP*1.8)*(vw*0.7)+lfbm(uvP*6.0)*(fw*0.9)+veins+0.14;}
+    else{float ser=lfbm(uv*12.0)*0.12;lp=lvoro(uv*2.2)*(vw*0.8)+lfbm(uv*6.0)*(fw*0.8)+ser+0.2;}
+    float thr=1.0-uLeafDensity,ew=mix(0.20,0.04,uEdgeSharpness);
+    float alpha=smoothstep(thr+ew,thr-ew,lp);if(alpha<0.2)discard;
+    float NdL=max(0.,dot(N,uSunDir));
+    vec3 lit=vec3(uAmbient)+uSunC*uSunS*NdL;
+    vec3 col=vCol*max(lit,vec3(0.02));col=col/(col+vec3(1.));
+    float fog=smoothstep(uFogN,uFogF,vFD);col=mix(col,uFog,fog);
+    gl_FragColor=vec4(col,1.0);
+  }`;
+const LSH={round:0,lobed:1,pinnate:2,serrated:3};
+// ── Scene ────────────────────────────────────────────────────
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const cw=()=>canvas.parentElement.clientWidth,ch=()=>canvas.parentElement.clientHeight;
+renderer.setSize(cw(),ch());
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0e1820);
+scene.fog=new THREE.Fog(0x0e1820,80,260);
+const camera=new THREE.PerspectiveCamera(55,cw()/ch(),0.2,500);
+
+const sunDir=new THREE.Vector3(0.6,0.85,0.4).normalize();
+const Usd={value:sunDir},Usc={value:new THREE.Vector3(1.0,0.93,0.78)},Uss={value:14.0};
+const Uamb={value:0.72},Ufog={value:new THREE.Vector3(0.14,0.21,0.30)};
+const Uwv={value:new THREE.Vector3()},Uwp={value:0.0};
+
+scene.add(new THREE.AmbientLight(0x8899bb,1.0));
+const sun=new THREE.DirectionalLight(0xfff5e0,2.0);sun.position.copy(sunDir);scene.add(sun);
+const fill=new THREE.DirectionalLight(0x8099cc,0.5);fill.position.set(-4,5,-3);scene.add(fill);
+
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new THREE.MeshLambertMaterial({color:0x1c3812}));gnd.rotation.x=-Math.PI/2;scene.add(gnd);
+
+const geoGPU=new THREE.IcosahedronGeometry(1,3);
+const SPACING=22;
+const trees=[];
+
+function makeMat(sp){
+  return new THREE.ShaderMaterial({
+    uniforms:{
+      uSunDir:Usd,uSunC:Usc,uSunS:Uss,uAmbient:Uamb,uFog:Ufog,
+      uFogN:{value:50},uFogF:{value:220},uWindVec:Uwv,uWindPhase:Uwp,
+      uBaseCol:{value:new THREE.Vector3(...sp.col)},
+      uCrownType:{value:CTM[sp.crownType]??0},
+      uCF:     {value:sp.crownFreq??2.5},
+      uCN:     {value:sp.crownNoise??0.30},
+      uBSX:    {value:sp.blobSpreadX??1.0},
+      uBSY:    {value:sp.blobSpreadY??1.0},
+      uYBias:  {value:sp.blobYBias??0.0},
+      uLumpMix:{value:sp.lumpMix??0.25},
+      uLeafDensity: {value:sp.leafDensity??0.75},
+      uLeafScale:   {value:sp.leafScale??1.0},
+      uDetailRough: {value:sp.detailRough??0.6},
+      uLeafShape:   {value:LSH[sp.leafShape]??0},
+      uEdgeSharpness:{value:sp.edgeSharpness??0.5},
+      uLeafCluster: {value:sp.leafCluster??0.0},
+      uLeafAspect:  {value:sp.leafAspect??1.0},
+    },
+    vertexShader:VS_GPU,fragmentShader:FS_GPU,
+    side:THREE.DoubleSide,alphaTest:0.2,extensions:{derivatives:true},
+  });
+}
+
+SPECIES.forEach((sp,i)=>{
+  const r=(sp.r[0]+sp.r[1])/2*0.7,px=i*SPACING;
+  const mat=makeMat(sp);
+  const crown=new THREE.Mesh(geoGPU,mat);
+  crown.scale.set(r,r*sp.ry,r);crown.position.set(px,5+r*sp.ry,0);
+  scene.add(crown);
+  const tk=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.28,5,8),new THREE.MeshLambertMaterial({color:0x2a1808}));
+  tk.position.set(px,2.5,0);scene.add(tk);
+  trees.push({crown,mat,px});
+});
+
+// ── Orbit ─────────────────────────────────────────────────────
+let curSp=0,camTX=0,camZ=28,camTheta=0,camPhi=0;
+let drag=false,lmx=0,lmy=0;
+canvas.addEventListener('mousedown',e=>{drag=true;lmx=e.clientX;lmy=e.clientY;});
+window.addEventListener('mouseup',()=>drag=false);
+window.addEventListener('mousemove',e=>{if(!drag)return;camTheta-=(e.clientX-lmx)*0.006;camPhi=Math.max(-0.3,Math.min(0.7,camPhi-(e.clientY-lmy)*0.006));lmx=e.clientX;lmy=e.clientY;});
+canvas.addEventListener('wheel',e=>{camZ=Math.max(6,Math.min(90,camZ+e.deltaY*0.04));},{ passive:true});
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')focusOn((curSp-1+SPECIES.length)%SPECIES.length);else if(e.key==='ArrowRight')focusOn((curSp+1)%SPECIES.length);});
+window.addEventListener('resize',()=>{camera.aspect=cw()/ch();camera.updateProjectionMatrix();renderer.setSize(cw(),ch());});
+
+// ── Tabs ──────────────────────────────────────────────────────
+const tabsEl=document.getElementById('species-tabs');
+SPECIES.forEach((sp,i)=>{
+  const b=document.createElement('button');b.className='sp-tab';b.textContent=sp.nmRu||sp.nm;b.dataset.i=i;
+  b.addEventListener('click',()=>focusOn(i));tabsEl.appendChild(b);
+});
+function updateTabs(){tabsEl.querySelectorAll('.sp-tab').forEach(b=>b.classList.toggle('active',+b.dataset.i===curSp));}
+
+// ── Params panel ──────────────────────────────────────────────
+const paramsEl=document.getElementById('params');
+function mkSec(t){const d=document.createElement('div');d.className='sec';d.textContent=t;return d;}
+function mkRow(lbl,ctrl,vEl){
+  const r=document.createElement('div');r.className='row';
+  const l=document.createElement('span');l.className='lbl';l.textContent=lbl;
+  r.appendChild(l);r.appendChild(ctrl);if(vEl)r.appendChild(vEl);return r;
+}
+function mkRange(lbl,mn,mx,step,val,cb){
+  const inp=document.createElement('input');inp.type='range';Object.assign(inp,{min:mn,max:mx,step,value:val});
+  const v=document.createElement('span');v.className='val';v.textContent=numFmt(val,step);
+  inp.addEventListener('input',()=>{const n=parseFloat(inp.value);v.textContent=numFmt(n,step);cb(n);});
+  return{row:mkRow(lbl,inp,v),inp,v};
+}
+function mkSel(lbl,opts,val,cb){
+  const s=document.createElement('select');
+  opts.forEach(o=>{const op=document.createElement('option');op.value=o;op.textContent=o;if(o===val)op.selected=true;s.appendChild(op);});
+  s.addEventListener('change',()=>cb(s.value));
+  return mkRow(lbl,s);
+}
+function numFmt(v,step){return step<0.1?v.toFixed(2):step<1?v.toFixed(1):Math.round(v).toString();}
+
+function buildParams(si){
+  paramsEl.innerHTML='';
+  const sp=SPECIES[si],mat=trees[si].mat;
+  // Crown shape
+  paramsEl.appendChild(mkSec('Crown shape'));
+  paramsEl.appendChild(mkSel('crownType',['round','spreading','columnar','oval'],sp.crownType,v=>{
+    sp.crownType=v;trees[si].mat.uniforms.uCrownType.value=CTM[v]??0;
+  }));
+  [{k:'blobSpreadX',lbl:'spreadX (горизонталь)',   mn:0.3,mx:2.5,st:0.05,u:'uBSX'},
+   {k:'blobSpreadY',lbl:'spreadY (вертикаль)',      mn:0.3,mx:2.5,st:0.05,u:'uBSY'},
+   {k:'blobYBias',  lbl:'yBias (↓поникает ↑вздёрнута)', mn:-1.0,mx:1.0,st:0.05,u:'uYBias'},
+   {k:'crownFreq',  lbl:'crownFreq (↓крупнее комки)',   mn:0.5,mx:8.0,st:0.1, u:'uCF'},
+   {k:'crownNoise', lbl:'crownNoise (глубина)',          mn:0,  mx:0.9,st:0.01,u:'uCN'},
+   {k:'lumpMix',    lbl:'lumpMix (0=Worley 1=FBM)',     mn:0,  mx:1.0,st:0.02,u:'uLumpMix'},
+  ].forEach(({k,lbl,mn,mx,st,u})=>{
+    const{row}=mkRange(lbl,mn,mx,st,sp[k]??0,v=>{sp[k]=v;trees[si].mat.uniforms[u].value=v;});
+    paramsEl.appendChild(row);
+  });
+  // Leaf texture
+  paramsEl.appendChild(mkSec('Leaf texture'));
+  paramsEl.appendChild(mkSel('leafShape',['round','lobed','pinnate','serrated'],sp.leafShape,v=>{sp.leafShape=v;trees[si].mat.uniforms.uLeafShape.value=LSH[v]??0;}));
+  [{k:'edgeSharpness',mn:0,mx:1,st:0.05},{k:'leafDensity',mn:0.3,mx:0.95,st:0.01},{k:'leafScale',mn:0.3,mx:2.5,st:0.05},{k:'detailRough',mn:0.3,mx:0.9,st:0.05},{k:'leafCluster',mn:-1.0,mx:1.0,st:0.05},{k:'leafAspect',mn:0.3,mx:3.0,st:0.05}]
+    .forEach(({k,mn,mx,st})=>{
+      const uKey='u'+k.charAt(0).toUpperCase()+k.slice(1);
+      const{row}=mkRange(k,mn,mx,st,sp[k],v=>{sp[k]=v;trees[si].mat.uniforms[uKey].value=v;});
+      paramsEl.appendChild(row);
+    });
+  // Eco (info)
+  paramsEl.appendChild(mkSec('Eco fields (read-only)'));
+  [['nm',sp.nm],['ry',sp.ry],['r',sp.r.join(',')],['h',sp.h.join(',')],['w',sp.w],['_mult',sp._mult]].forEach(([k,v])=>{
+    const row=document.createElement('div');row.className='row';
+    const l=document.createElement('span');l.className='lbl';l.textContent=k;
+    const vv=document.createElement('span');vv.className='val';vv.style.color='rgba(255,255,255,.28)';vv.textContent=v;
+    row.appendChild(l);row.appendChild(vv);paramsEl.appendChild(row);
+  });
+}
+
+function rebuildCrown(si){
+  // при Worley-подходе все crown-параметры — uniforms, rebuild не нужен
+  // оставляем для совместимости (может вызываться из других мест)
+}
+
+function focusOn(i){curSp=i;updateTabs();buildParams(i);}
+
+// ── Export / Import ───────────────────────────────────────────
+function fmtJS(){
+  const lines=SPECIES.map(sp=>{
+    const c=sp.col.map(v=>v.toFixed(3)).join(',');
+    const pad=(s,n)=>s+' '.repeat(Math.max(0,n-s.length));
+    const l1=`    {nm:'${sp.nm}', nmRu:'${sp.nmRu||sp.nm}', ry:${sp.ry},r:[${sp.r}],col:[${c}],h:[${sp.h}],w:${sp.w},_mult:${sp._mult},`;
+    const l2=`     crownType:'${sp.crownType}',blobSpreadX:${(sp.blobSpreadX??1).toFixed(2)},blobSpreadY:${(sp.blobSpreadY??1).toFixed(2)},blobYBias:${(sp.blobYBias??0).toFixed(2)},crownNoise:${(sp.crownNoise??0.3).toFixed(2)},crownFreq:${(sp.crownFreq??2.5).toFixed(1)},lumpMix:${(sp.lumpMix??0.25).toFixed(2)},`;
+    const l3=`     leafShape:'${sp.leafShape}',edgeSharpness:${sp.edgeSharpness.toFixed(2)},leafDensity:${sp.leafDensity.toFixed(2)},leafScale:${sp.leafScale.toFixed(2)},detailRough:${sp.detailRough.toFixed(2)},leafCluster:${(sp.leafCluster??0).toFixed(2)},leafAspect:${(sp.leafAspect??1).toFixed(2)}},`;
+    return l1+'\n'+l2+'\n'+l3;
+  });
+  return lines.join('\n');
+}
+
+document.getElementById('btn-dl').addEventListener('click',()=>{
+  const txt='[\n'+fmtJS()+'\n]';
+  const b=new Blob([txt],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='species-config.js';a.click();URL.revokeObjectURL(a.href);
+});
+document.getElementById('btn-js').addEventListener('click',()=>{
+  navigator.clipboard.writeText('[\n'+fmtJS()+'\n]').then(()=>{
+    const b=document.getElementById('btn-js'),o=b.textContent;b.textContent='✓ Скопировано';setTimeout(()=>b.textContent=o,1600);
+  });
+});
+document.getElementById('btn-imp').addEventListener('click',()=>{
+  const txt=document.getElementById('imp-area').value.trim();
+  if(!txt)return;
+  const hint=document.getElementById('imp-hint');
+  try{
+    // принимаем и JSON и JS-нотацию (одинарные кавычки, без кавычек у ключей)
+    let arr;
+    try{arr=JSON.parse(txt);}catch(e){arr=eval('('+txt+')');}
+    if(!Array.isArray(arr))throw new Error('not array');
+    arr.forEach((src,i)=>{
+      if(i>=SPECIES.length)return;
+      const sp=SPECIES[i];
+      ['crownType','blobSpreadX','blobSpreadY','blobYBias','crownNoise','crownFreq','lumpMix',
+       'leafShape','edgeSharpness','leafDensity','leafScale','detailRough','leafCluster','leafAspect',
+       'ry','r','col','h','w','_mult','nm','nmRu']
+        .forEach(k=>{if(src[k]!==undefined)sp[k]=src[k];});
+      if(src.leafCluster===undefined)sp.leafCluster=0.0;
+      // пересоздаём материал
+      const old=trees[i].mat,nm=makeMat(sp);
+      trees[i].crown.material=nm;trees[i].mat=nm;old.dispose();
+      const r=(sp.r[0]+sp.r[1])/2*0.7;
+      trees[i].crown.scale.set(r,r*sp.ry,r);
+      trees[i].crown.position.y=5+r*sp.ry;
+    });
+    buildParams(curSp);
+    updateTabs();
+    document.getElementById('imp-area').value='';
+    hint.textContent='✓ Конфиг применён';hint.style.color='var(--accent)';
+    setTimeout(()=>{hint.textContent='Вставь JS/JSON конфиг → «Применить»';hint.style.color='';},2200);
+  }catch(e){
+    hint.textContent='⚠ '+e.message;hint.style.color='#ff6060';
+    setTimeout(()=>{hint.textContent='Вставь JS/JSON конфиг → «Применить»';hint.style.color='';},3000);
+  }
+});
+
+// ── Loop ──────────────────────────────────────────────────────
+const clock=new THREE.Clock();let camTXsmooth=0;
+focusOn(0);
+
+(function loop(){
+  requestAnimationFrame(loop);
+  const t=clock.getElapsedTime(),wt=t*0.8;
+  Uwv.value.set((Math.sin(wt*0.4)*0.5+Math.sin(wt*1.1)*0.2)*0.35,Math.sin(wt*0.3)*0.04,(Math.cos(wt*0.35)*0.4+Math.cos(wt*0.9)*0.15)*0.35);
+  Uwp.value=wt;
+  const tx=trees[curSp].px;
+  camTXsmooth+=(tx-camTXsmooth)*0.07;
+  const cx=camTXsmooth+Math.sin(camTheta)*camZ*Math.cos(camPhi);
+  const cy=8+Math.sin(camPhi)*camZ;
+  const cz=Math.cos(camTheta)*camZ*Math.cos(camPhi);
+  camera.position.set(cx,cy,cz);camera.lookAt(camTXsmooth,6,0);
+  renderer.render(scene,camera);
+})();
+</script>
+</body>
+</html>
