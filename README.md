@@ -148,6 +148,29 @@ Two patch meshes are used for performance optimization. If you want trees to fad
 
 ---
 
+### Biome Color Control
+
+The color of the entire landscape is defined via HTML attributes on any elements on the page:
+
+```html
+<!-- single color — applied once on initialization, color cycling is disabled -->
+<span data-landscape-main-color="#2a5c1e"></span>
+
+<!-- multiple colors — the landscape smoothly transitions between them in declaration order -->
+<span data-landscape-main-color="#2a5c1e"></span>
+<span data-landscape-main-color="#1a3a6b"></span>
+<span data-landscape-main-color="#6b2a1a"></span>
+
+<!-- optional: number of interpolation patches between each pair (default is 8) -->
+<span data-landscape-transition-patches="10"></span>
+```
+
+The full palette is automatically derived from the main color: grass, shore, water, rocks, mountains, snow, and the colors of each tree type. Water always remains within the blue range (~210°) regardless of the main color. This behavior is controlled by `_CTL_WATER_LOCK`.
+
+If only one color is specified, there is no animation overhead: the palette is computed once on load.
+
+---
+
 ## Performance
 
 | Preset   | Landscape Polygons | Crown Vertices | Tested On             |

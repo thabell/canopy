@@ -7,7 +7,7 @@
 .landscape__content{position:relative;z-index:10;
    /*  background:rgba(0,0,0,0.2); затемнение фона под надпись поверх */
   height:100%;}
-.landscape__content *:not(a):not(button):not(.btn):not(a *):not(button *):not(.btn *){background:none!important}
+/* .landscape__content *:not(a):not(button):not(.btn):not(a *):not(button *):not(.btn *){background:none!important} */
 .landscape__ctrl{position:absolute;bottom:20px;right:20px;z-index:100;background:rgba(0,0,0,0.58);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 18px;color:#fff;font:12px/1.6 'Courier New',monospace;min-width:260px;user-select:none}
 .landscape__ctrl>summary{cursor:pointer;font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:.06em;list-style:none;display:flex;align-items:center;gap:6px}
 .landscape__ctrl>summary::-webkit-details-marker{display:none}
@@ -44,7 +44,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <div class="landscape__bg"></div>
 <div class="landscape__content">
+<!-- нотация строго #rrggbb, регистр не важен -->
+<!-- <span data-landscape-main-color="#2a5c1e"></span> -->
+<!-- <span data-landscape-main-color="#8759a6"></span> -->
+<!-- <span data-landscape-main-color="#d6ec41"></span> -->
 
+<!-- опционально, на любом элементе -->
+<!-- <span data-landscape-transition-patches="10"></span> -->
 </div>
 <script>
 if(typeof THREE==='undefined') throw new Error('[lnd] THREE not loaded');
@@ -476,6 +482,67 @@ const tMat=new THREE.ShaderMaterial({
   vertexShader:terrVert,fragmentShader:terrFrag,extensions:{derivatives:true},
 });
 
+const _CTL_DEF_PATCHES=8,_CTL_WATER_LOCK=true;
+const _CTL_SP_DELTA=[-8,-4,0,4,8,-6,2,-2,6,-4];
+function _ctlH2S(hex){return[parseInt(hex.slice(1,3),16)/255,parseInt(hex.slice(3,5),16)/255,parseInt(hex.slice(5,7),16)/255];}
+function _ctlS2H(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;if(mx===mn)return[0,0,l];const d=mx-mn,s=l>0.5?d/(2-mx-mn):d/(mx+mn);let h;if(mx===r)h=((g-b)/d+(g<b?6:0))/6;else if(mx===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6;return[h*360,s,l];}
+function _ctlH2R(h,s,l){h=((h%360)+360)%360;if(s===0)return[l,l,l];const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q,hk=h/360;return[hk+1/3,hk,hk-1/3].map(t=>{t=((t%1)+1)%1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;});}
+function _ctlLin(h,s,l){return _ctlH2R(h,clamp(s,0,1),clamp(l,0,1)).map(srgbToLin);}
+function _ctlDerive(hex){
+  const[r,g,b]=_ctlH2S(hex);const[H,S,L]=_ctlS2H(r,g,b);
+  const Hw=_CTL_WATER_LOCK?clamp(210+(H-120)*0.08,185,230):210+(H-120)*0.08;
+  const lrp=(a,b,t)=>a+(b-a)*t;
+  return{
+    C_GR1: _ctlLin(H,          S,        L      ),
+    C_GR2: _ctlLin(H+12,       S*1.05,   L*1.08 ),
+    C_SHORE:_ctlLin(lrp(H,Hw,0.4),S*0.22,L*0.68 ),
+    C_WATER:_ctlLin(Hw,         S*0.55,   L*0.62 ),
+    C_DEEPW:_ctlLin(Hw+5,       S*0.60,   L*0.35 ),
+    C_RK1: _ctlLin(H+25,       S*0.18,   L*0.80 ),
+    C_RK2: _ctlLin(H+18,       S*0.10,   L*1.12 ),
+    C_MTN: _ctlLin(Hw,         0.06,     0.48   ),
+    C_PEAK:_ctlLin(Hw,         0.09,     0.60   ),
+    C_SNOW:_ctlLin(Hw+5,       0.12,     0.86   ),
+    sp:C.SPECIES.map((_,i)=>_ctlLin(H+(_CTL_SP_DELTA[i]||0),clamp(S*1.25,0,1),clamp(L*0.72,0,1))),
+  };
+}
+function _ctlLerpPal(a,b,t){
+  const lc=(ac,bc)=>ac.map((v,i)=>v+(bc[i]-v)*t);
+  return{C_GR1:lc(a.C_GR1,b.C_GR1),C_GR2:lc(a.C_GR2,b.C_GR2),C_SHORE:lc(a.C_SHORE,b.C_SHORE),
+    C_WATER:lc(a.C_WATER,b.C_WATER),C_DEEPW:lc(a.C_DEEPW,b.C_DEEPW),
+    C_RK1:lc(a.C_RK1,b.C_RK1),C_RK2:lc(a.C_RK2,b.C_RK2),C_MTN:lc(a.C_MTN,b.C_MTN),
+    C_PEAK:lc(a.C_PEAK,b.C_PEAK),C_SNOW:lc(a.C_SNOW,b.C_SNOW),
+    sp:a.sp.map((ac,i)=>lc(ac,b.sp[i])),};
+}
+const _ctlRaw=[...document.querySelectorAll('[data-landscape-main-color]')]
+  .map(el=>el.getAttribute('data-landscape-main-color'))
+  .filter(s=>/^#[0-9a-f]{6}$/i.test(s));
+const _ctlTransEl=document.querySelector('[data-landscape-transition-patches]');
+const _ctlPatches=_ctlTransEl?parseInt(_ctlTransEl.getAttribute('data-landscape-transition-patches'),10)||_CTL_DEF_PATCHES:_CTL_DEF_PATCHES;
+let _ctlPalettes=null,_ctlIdx=0;
+if(_ctlRaw.length===1){
+  _ctlApply(_ctlDerive(_ctlRaw[0]));
+  if(C.DEBUG) console.log('[lnd:ctl] single-color, applied once');
+} else if(_ctlRaw.length>1){
+  const kf=_ctlRaw.map(_ctlDerive);
+  const pp=[...kf,...kf.slice(1,-1).reverse()];
+  _ctlPalettes=[];
+  for(let s=0;s<pp.length;s++){
+    const fr=pp[s],to=pp[(s+1)%pp.length];
+    for(let i=0;i<_ctlPatches;i++) _ctlPalettes.push(_ctlLerpPal(fr,to,i/_ctlPatches));
+  }
+  if(C.DEBUG) console.log('[lnd:ctl] stops:'+_ctlRaw.length+' patches:'+_ctlPatches+' total:'+_ctlPalettes.length);
+}
+function _ctlApply(pal){
+  const u=tMat.uniforms;
+  u.uC_GR1.value.set(...pal.C_GR1);u.uC_GR2.value.set(...pal.C_GR2);
+  u.uC_SHORE.value.set(...pal.C_SHORE);u.uC_WATER.value.set(...pal.C_WATER);
+  u.uC_DEEPW.value.set(...pal.C_DEEPW);u.uC_RK1.value.set(...pal.C_RK1);
+  u.uC_RK2.value.set(...pal.C_RK2);u.uC_MTN.value.set(...pal.C_MTN);
+  u.uC_PEAK.value.set(...pal.C_PEAK);u.uC_SNOW.value.set(...pal.C_SNOW);
+  pal.sp.forEach((col,i)=>{C.SPECIES[i].col=col;});
+}
+
 function makeGeo(segW,segD){const g=new THREE.PlaneGeometry(C.CHUNK_W,C.CHUNK_D,segW,segD);g.rotateX(-Math.PI/2);return g;}
 let currentGeo=makeGeo(S.segW,S.segD);
 const TOTAL=C.CHUNKS*C.CHUNK_D;
@@ -576,6 +643,9 @@ function _processQueue(){
 }
 
 function _generatePatch(pi,worldZBase){
+  // _ctlPalettes
+  if(_ctlPalettes){_ctlApply(_ctlPalettes[_ctlIdx%_ctlPalettes.length]);_ctlIdx++;}
+
   const m=_patchMeshes[pi];
   const ap0=m._ap0,ap1=m._ap1,ap2=m._ap2,ap3=m._ap3;
   const H_MIN=Math.max(C.TREE_H_MIN,C.WATER_LEVEL);
@@ -908,5 +978,6 @@ if(C.DEBUG){
 }
 
 if(C.DEBUG) console.log('[lnd] ready | draw calls trees:'+TREE_CHUNKS+' (было 30) | Worley crown | instance attrs');
+
 </script>
 </div>
